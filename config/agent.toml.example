@@ -1,0 +1,137 @@
+# WhiteQubit Agent Configuration
+# Default configuration file
+
+# Paths
+wal_path = "/var/lib/whitequbit/wal"
+audit_path = "/var/log/whitequbit/audit.log"
+socket_path = "/var/run/whitequbit/agent.sock"
+pid_path = "/var/run/whitequbit/agent.pid"
+
+# Security Configuration
+[security]
+# User/group to drop privileges to
+target_uid = 65534  # nobody
+target_gid = 65534  # nogroup
+
+# Whether to drop privileges after startup
+drop_privileges = true
+
+# Whether to apply seccomp/landlock sandbox
+apply_sandbox = true
+
+# Allowed UIDs that can connect via IPC
+allowed_client_uids = [0]  # Only root by default
+
+# Allowed GIDs that can connect via IPC
+allowed_client_gids = []
+
+# Sandbox Configuration
+[security.sandbox]
+enable_seccomp = true
+enable_landlock = true
+
+# Paths the agent can read
+readonly_paths = [
+    "/etc/whitequbit",
+    "/usr",
+    "/lib",
+    "/lib64"
+]
+
+# Paths the agent can read and write
+readwrite_paths = [
+    "/var/lib/whitequbit",
+    "/var/log/whitequbit",
+    "/var/run/whitequbit"
+]
+
+# Paths the agent can execute from
+execute_paths = [
+    "/usr/bin",
+    "/usr/sbin",
+    "/bin",
+    "/sbin"
+]
+
+# Logging Configuration
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+
+# Log format: json, text
+format = "json"
+
+# Log to stdout
+stdout = false
+
+# Log to file
+file = true
+
+# Log file path
+file_path = "/var/log/whitequbit/agent.log"
+
+# Maximum log file size in MB
+max_size_mb = 100
+
+# Number of rotated files to keep
+max_files = 5
+
+# Event Handling Configuration
+[events]
+# Maximum events to queue
+max_queue_size = 1000
+
+# Rate limit (events per client per window)
+rate_limit = 100
+
+# Rate limit window in seconds
+rate_limit_window = 60
+
+# Maximum event payload size in bytes
+max_payload_size = 65536  # 64KB
+
+# Connection timeout in seconds
+connection_timeout = 30
+
+# Read timeout in seconds
+read_timeout = 60
+
+# Action Execution Configuration
+[actions]
+# Default action timeout in seconds
+default_timeout = 30
+
+# Maximum action timeout in seconds
+max_timeout = 300
+
+# Maximum concurrent actions
+max_concurrent = 10
+
+# Whether to sandbox action execution in forked process
+sandbox_actions = true
+
+# Dry run mode (don't actually execute actions)
+dry_run = false
+
+# Rollback Configuration
+[rollback]
+# Maximum WAL size in MB before compaction
+max_wal_size_mb = 100
+
+# Whether to create periodic checkpoints
+enable_checkpoints = true
+
+# Checkpoint every N committed actions
+checkpoint_interval = 100
+
+# Maximum checkpoints to retain
+max_checkpoints = 5
+
+# Checkpoint directory
+checkpoint_dir = "/var/lib/whitequbit/checkpoints"
+
+# Maximum retries for compensation actions
+max_retries = 3
+
+# Delay between retries in milliseconds
+retry_delay_ms = 1000

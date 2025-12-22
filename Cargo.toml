@@ -1,0 +1,90 @@
+[package]
+name = "whitequbit-agent"
+version = "0.1.0"
+edition = "2021"
+authors = ["WhiteQubit Security Team"]
+description = "Security-critical system agent daemon with rollback support"
+license = "MIT"
+repository = "https://github.com/whitequbit/whitequbit-agent"
+keywords = ["security", "daemon", "firewall", "system-agent"]
+categories = ["command-line-utilities", "os"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full", "signal", "sync", "time", "fs", "io-util", "net", "rt-multi-thread"] }
+
+# Async trait support
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+erased-serde = "0.4"
+typetag = "0.2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Cryptography for audit log integrity
+blake3 = "1.5"
+ring = "0.17"
+crc32fast = "1.3"
+
+# UUID for action IDs
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Configuration
+toml = "0.8"
+config = "0.14"
+
+# IPC
+bytes = "1.5"
+
+# Cloning trait objects
+dyn-clone = "1.0"
+
+# Signal handling
+ctrlc = "3.4"
+
+# Terminal detection
+atty = "0.2"
+
+# Platform-specific dependencies
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.27", features = ["user", "signal", "fs", "process", "socket", "net"] }
+caps = "0.5"
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.3"
+seccompiler = "0.4"
+
+[dev-dependencies]
+tempfile = "3.9"
+tokio-test = "0.4"
+proptest = "1.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+panic = "abort"
+
+[[bin]]
+name = "whitequbit-agent"
+path = "src/main.rs"
+
+[[bin]]
+name = "whitequbit-supervisor"
+path = "src/supervisor_main.rs"

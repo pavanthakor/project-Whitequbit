@@ -1,0 +1,46 @@
+[Unit]
+Description=WhiteQubit Security Agent
+Documentation=https://github.com/whitequbit/whitequbit-agent
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/whitequbit-agent -c /etc/whitequbit/agent.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+# Required directories
+ReadWritePaths=/var/lib/whitequbit /var/log/whitequbit /var/run/whitequbit
+RuntimeDirectory=whitequbit
+StateDirectory=whitequbit
+LogsDirectory=whitequbit
+
+# Capabilities
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_PTRACE
+AmbientCapabilities=CAP_NET_ADMIN
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target
