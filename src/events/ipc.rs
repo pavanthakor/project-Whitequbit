@@ -95,17 +95,30 @@ impl IpcEventSource {
     }
 
     /// Start accepting connections
+    /// Note: Connection acceptance is handled by next_event() method in the EventSource trait.
+    /// This method spawns a background task for cleanup and rate limit housekeeping.
     pub fn start(&self) -> tokio::task::JoinHandle<()> {
-        let listener = self.listener.try_clone().ok();
-        let event_tx = self.event_tx.clone();
-        let client_count = self.client_count.clone();
+        // Note: tokio::net::UnixListener cannot be cloned. Connection acceptance
+        // happens in next_event(). This task handles periodic cleanup.
         let rate_limiter = self.rate_limiter.clone();
         let shutdown = self.shutdown.clone();
 
         tokio::spawn(async move {
-            // Note: In practice, we'd need to restructure this
-            // For now, this is a placeholder
-            info!("IPC event source would start accepting connections here");
+            info!("IPC event source background task started");
+            
+            // Periodic cleanup loop
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                
+                if shutdown.load(Ordering::SeqCst) {
+                    break;
+                }
+                
+                // Clean up expired rate limit entries
+                let mut limiter = rate_limiter.lock().await;
+                limiter.cleanup();
+            }
         })
     }
 
@@ -183,18 +196,23 @@ impl IpcEventSource {
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
+            use std::os::fd::BorrowedFd;
 
             let fd = stream.as_raw_fd();
 
-            // Try to get peer credentials
+            // Try to get peer credentials using nix's getsockopt
+            // SAFETY: We know the fd is valid because it comes from a live UnixStream
+            let borrowed_fd = unsafe { BorrowedFd::borrow_raw(fd) };
             let creds = nix::sys::socket::getsockopt(
-                fd,
+                &borrowed_fd,
                 nix::sys::socket::sockopt::PeerCredentials,
             );
 
             match creds {
                 Ok(cred) => ClientInfo {
                     id: client_id.to_string(),
+                    // Principal derived from UID for local Unix socket peers
+                    principal: format!("uid:{}", cred.uid()),
                     pid: Some(cred.pid() as u32),
                     uid: Some(cred.uid()),
                     gid: Some(cred.gid()),
@@ -202,6 +220,7 @@ impl IpcEventSource {
                 },
                 Err(_) => ClientInfo {
                     id: client_id.to_string(),
+                    principal: "unknown".to_string(),
                     pid: None,
                     uid: None,
                     gid: None,
@@ -214,6 +233,7 @@ impl IpcEventSource {
         {
             ClientInfo {
                 id: client_id.to_string(),
+                principal: "unknown".to_string(),
                 pid: None,
                 uid: None,
                 gid: None,

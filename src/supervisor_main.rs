@@ -139,6 +139,8 @@ fn kill_agent(child: &mut Child) {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
+        // SAFETY: child.id() returns a valid PID for the spawned process.
+        // SIGKILL is always safe to send to a process we own.
         unsafe {
             libc::kill(child.id() as i32, libc::SIGKILL);
         }
@@ -155,6 +157,8 @@ fn kill_agent(child: &mut Child) {
 fn graceful_shutdown(child: &mut Child) {
     #[cfg(unix)]
     {
+        // SAFETY: child.id() returns a valid PID for the spawned process.
+        // SIGTERM is the standard signal for graceful shutdown.
         unsafe {
             libc::kill(child.id() as i32, libc::SIGTERM);
         }

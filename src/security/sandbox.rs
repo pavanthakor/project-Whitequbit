@@ -93,12 +93,12 @@ impl SandboxManager {
         // Check if landlock is supported
         let abi = ABI::V1;
 
-        let mut ruleset = Ruleset::new()
+        let ruleset = Ruleset::new()
             .handle_access(AccessFs::from_all(abi))
             .map_err(|e| SecurityError::Sandbox(format!("Failed to create ruleset: {}", e)))?;
 
         // Create the ruleset
-        let ruleset = ruleset
+        let mut ruleset = ruleset
             .create()
             .map_err(|e| SecurityError::Sandbox(format!("Failed to create ruleset: {}", e)))?;
 

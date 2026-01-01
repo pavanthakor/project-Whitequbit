@@ -30,6 +30,9 @@ impl PeerCredentials {
         let mut cred = MaybeUninit::<libc::ucred>::uninit();
         let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
 
+        // SAFETY: getsockopt with SO_PEERCRED is safe for Unix domain sockets.
+        // The fd is valid (from UnixStream), cred is properly sized, and len
+        // is correctly initialized to the size of ucred.
         let result = unsafe {
             libc::getsockopt(
                 fd,
@@ -44,6 +47,7 @@ impl PeerCredentials {
             return Err(io::Error::last_os_error());
         }
 
+        // SAFETY: getsockopt succeeded (result == 0), so cred is now initialized
         let cred = unsafe { cred.assume_init() };
         
         Ok(Self {

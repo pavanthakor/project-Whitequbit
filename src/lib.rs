@@ -30,7 +30,9 @@
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]
-#![deny(unsafe_code)]
+// Allow unsafe blocks for Linux system APIs (fork, prctl, getsockopt, etc.)
+// but require safety documentation within unsafe fn bodies
+#![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod actions;
 pub mod audit;

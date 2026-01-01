@@ -205,6 +205,9 @@ impl PrivilegeManager {
     fn set_no_new_privs(&self) -> Result<(), SecurityError> {
         use libc::{prctl, PR_SET_NO_NEW_PRIVS};
 
+        // SAFETY: prctl with PR_SET_NO_NEW_PRIVS is a simple flag set operation
+        // that is always safe to call. It prevents the process from gaining new
+        // privileges through execve.
         let result = unsafe { prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if result != 0 {
             return Err(SecurityError::Privilege(

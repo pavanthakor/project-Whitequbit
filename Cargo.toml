@@ -48,6 +48,12 @@ config = "0.14"
 # IPC
 bytes = "1.5"
 
+# Binary serialization for IPC
+bincode = "1.3"
+
+# Synchronization primitives
+parking_lot = "0.12"
+
 # Cloning trait objects
 dyn-clone = "1.0"
 
@@ -62,6 +68,7 @@ atty = "0.2"
 nix = { version = "0.27", features = ["user", "signal", "fs", "process", "socket", "net"] }
 caps = "0.5"
 libc = "0.2"
+signal-hook = { version = "0.3", features = ["iterator"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.3"

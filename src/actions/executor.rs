@@ -98,10 +98,13 @@ impl ActionExecutor {
         let (read_fd, write_fd) = nix::unistd::pipe()
             .map_err(|e| ActionError::Sandbox(format!("Failed to create pipe: {}", e)))?;
 
-        // Fork
+        // Fork the process to execute action in isolation
+        // SAFETY: fork() is safe when called in a single-threaded context before spawning
+        // tokio tasks, or when we properly handle the child process not using async runtime
         match unsafe { nix::unistd::fork() } {
             Ok(nix::unistd::ForkResult::Child) => {
-                // Child process
+                // Child process - close read end of pipe
+                // SAFETY: read_fd is a valid fd from pipe() above
                 drop(unsafe { std::fs::File::from_raw_fd(read_fd) });
 
                 // Apply additional sandbox restrictions here
@@ -116,6 +119,7 @@ impl ActionExecutor {
                     Err(e) => format!("ERROR:{}", e).into_bytes(),
                 };
 
+                // SAFETY: write_fd is a valid fd from pipe(), we own it in child process
                 let mut write_file = unsafe { std::fs::File::from_raw_fd(write_fd) };
                 let _ = write_file.write_all(&result_bytes);
                 drop(write_file);
@@ -124,10 +128,12 @@ impl ActionExecutor {
                 std::process::exit(if result.is_ok() { 0 } else { 1 });
             }
             Ok(nix::unistd::ForkResult::Parent { child }) => {
-                // Parent process
+                // Parent process - close write end of pipe
+                // SAFETY: write_fd is a valid fd from pipe() above
                 drop(unsafe { std::fs::File::from_raw_fd(write_fd) });
 
                 // Read result from child
+                // SAFETY: read_fd is a valid fd from pipe() above
                 let mut read_file = unsafe { std::fs::File::from_raw_fd(read_fd) };
                 let mut result_bytes = Vec::new();
                 read_file

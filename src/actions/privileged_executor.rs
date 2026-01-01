@@ -14,6 +14,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use tokio::io::AsyncReadExt;
+#[cfg(unix)]
+use tokio::time::timeout;
 use tracing::{info, instrument, warn};
 
 use super::action::{Action, ActionResult, ExecutionContext, ValidationError};
@@ -255,6 +257,9 @@ impl PrivilegedExecutor {
         debug!("Forking child for privileged action");
 
         // Fork child process
+        // SAFETY: fork() is safe here because we immediately handle both parent and
+        // child cases. The child process doesn't use any async runtime resources;
+        // it synchronously executes the action and exits.
         match unsafe { fork() } {
             Ok(ForkResult::Child) => {
                 // === CHILD PROCESS ===
@@ -359,6 +364,8 @@ impl PrivilegedExecutor {
         let len = bytes.len() as u32;
         let len_bytes = len.to_le_bytes();
 
+        // SAFETY: fd is a valid file descriptor from pipe() created in execute_forked,
+        // passed to child after fork. We own this fd in the child process.
         let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
         file.write_all(&len_bytes)
             .map_err(|e| ActionError::Sandbox(format!("Failed to write length: {}", e)))?;
@@ -373,13 +380,33 @@ impl PrivilegedExecutor {
     /// Read result from pipe in parent process
     #[cfg(unix)]
     async fn read_result(fd: RawFd) -> Result<ChildResult, ActionError> {
+        use std::os::unix::io::AsRawFd;
         use tokio::io::AsyncReadExt;
 
         // Convert to async file
+        // SAFETY: fd is a valid file descriptor from pipe() created in execute_forked
         let std_file = unsafe { std::fs::File::from_raw_fd(fd) };
-        std_file.set_nonblocking(true).map_err(|e| {
-            ActionError::Sandbox(format!("Failed to set nonblocking: {}", e))
-        })?;
+        
+        // Set non-blocking mode using fcntl (std::fs::File doesn't have set_nonblocking)
+        {
+            let raw_fd = std_file.as_raw_fd();
+            // SAFETY: fcntl with F_GETFL/F_SETFL is safe for valid file descriptors
+            let flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFL) };
+            if flags < 0 {
+                return Err(ActionError::Sandbox(format!(
+                    "Failed to get fd flags: {}",
+                    std::io::Error::last_os_error()
+                )));
+            }
+            let result = unsafe { libc::fcntl(raw_fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+            if result < 0 {
+                return Err(ActionError::Sandbox(format!(
+                    "Failed to set nonblocking: {}",
+                    std::io::Error::last_os_error()
+                )));
+            }
+        }
+        
         let mut file = tokio::fs::File::from_std(std_file);
 
         // Read length prefix
@@ -419,10 +446,13 @@ impl PrivilegedExecutor {
         {
             // Verify no_new_privs is set
             use libc::{prctl, PR_GET_NO_NEW_PRIVS};
+            // SAFETY: prctl with PR_GET_NO_NEW_PRIVS is a read-only query that is always safe
             let result = unsafe { prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) };
             if result != 1 {
                 // Set it if not already set
                 use libc::PR_SET_NO_NEW_PRIVS;
+                // SAFETY: prctl with PR_SET_NO_NEW_PRIVS prevents privilege escalation
+                // and is always safe to call
                 let result = unsafe { prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
                 if result != 0 {
                     return Err(ActionError::Sandbox("Failed to set NO_NEW_PRIVS".into()));
