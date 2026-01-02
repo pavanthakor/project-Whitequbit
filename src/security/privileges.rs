@@ -2,7 +2,7 @@
 //!
 //! Handles dropping privileges after startup.
 
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::config::SecurityConfig;
 

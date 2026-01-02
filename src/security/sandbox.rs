@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::config::SecurityConfig;
 
@@ -149,7 +149,7 @@ impl SandboxManager {
     #[cfg(target_os = "linux")]
     fn apply_seccomp(&self) -> Result<(), SecurityError> {
         use seccompiler::{
-            BpfMap, SeccompAction, SeccompFilter, SeccompRule,
+            SeccompAction, SeccompFilter, SeccompRule, TargetArch,
         };
         use std::collections::BTreeMap;
 
@@ -272,24 +272,39 @@ impl SandboxManager {
             rules.insert(syscall, vec![SeccompRule::new(vec![]).unwrap()]);
         }
 
+        // Determine target architecture for seccomp
+        let target_arch = match std::env::consts::ARCH {
+            "x86_64" => TargetArch::x86_64,
+            "aarch64" => TargetArch::aarch64,
+            arch => {
+                return Err(SecurityError::Sandbox(format!(
+                    "Unsupported architecture for seccomp: {}",
+                    arch
+                )));
+            }
+        };
+
         // Create the filter
         let filter = SeccompFilter::new(
             rules,
             SeccompAction::Errno(libc::EPERM as u32), // Default: deny with EPERM
             SeccompAction::Allow, // Matches: allow
-            std::env::consts::ARCH.try_into().unwrap(),
+            target_arch,
         )
         .map_err(|e| SecurityError::Sandbox(format!("Failed to create seccomp filter: {}", e)))?;
 
-        // Apply the filter
-        let bpf: BpfMap = filter
+        // Compile the filter to BPF program
+        // seccompiler provides compile_from_filters for a collection, but for a single filter
+        // we use the SeccompFilter's try_into method via the BpfProgram type
+        let bpf_prog: seccompiler::BpfProgram = filter
             .try_into()
-            .map_err(|e| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
+            .map_err(|e: seccompiler::Error| {
+                SecurityError::Sandbox(format!("Failed to compile filter: {}", e))
+            })?;
 
-        for (_, prog) in bpf {
-            seccompiler::apply_filter(&prog)
-                .map_err(|e| SecurityError::Sandbox(format!("Failed to apply seccomp: {}", e)))?;
-        }
+        // Apply the filter to the current thread
+        seccompiler::apply_filter(&bpf_prog)
+            .map_err(|e| SecurityError::Sandbox(format!("Failed to apply seccomp: {}", e)))?;
 
         info!("Seccomp filter applied ({} syscalls allowed)", allowed_syscalls.len());
         Ok(())

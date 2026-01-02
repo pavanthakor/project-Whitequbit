@@ -3,7 +3,7 @@
 //! Handles Unix signals for the agent.
 
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{debug, info};
 
 /// Signal types that the agent handles
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

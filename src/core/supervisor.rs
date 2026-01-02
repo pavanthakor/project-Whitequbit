@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use tokio::sync::Notify;
 use tokio::time::interval;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 /// Heartbeat interval
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);

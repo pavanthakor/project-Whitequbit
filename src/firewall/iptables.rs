@@ -978,30 +978,41 @@ impl FirewallBackend for IptablesBackend {
     }
 
     async fn get_rule(&self, rule_id: &RuleId) -> FirewallResult<Option<RuleState>> {
-        let cache = self.rule_cache.read();
-        Ok(cache.get(rule_id).map(|c| c.state.clone()))
+        // Extract data while lock is held, then drop lock before returning
+        let result = {
+            let cache = self.rule_cache.read();
+            cache.get(rule_id).map(|c| c.state.clone())
+        };
+        Ok(result)
     }
 
     async fn list_rules(&self) -> FirewallResult<Vec<RuleState>> {
-        let cache = self.rule_cache.read();
-        Ok(cache.values().map(|c| c.state.clone()).collect())
+        // Extract data while lock is held, then drop lock before returning
+        let result = {
+            let cache = self.rule_cache.read();
+            cache.values().map(|c| c.state.clone()).collect()
+        };
+        Ok(result)
     }
 
     async fn find_rules_for_ip(&self, ip: &ValidatedIp) -> FirewallResult<Vec<RuleState>> {
-        let cache = self.rule_cache.read();
         let ip_str = ip.to_string();
-
-        Ok(cache
-            .values()
-            .filter(|c| {
-                if let Some(ref source) = c.spec.source {
-                    source.to_string().contains(&ip_str)
-                } else {
-                    false
-                }
-            })
-            .map(|c| c.state.clone())
-            .collect())
+        // Extract data while lock is held, then drop lock before returning
+        let result = {
+            let cache = self.rule_cache.read();
+            cache
+                .values()
+                .filter(|c| {
+                    if let Some(ref source) = c.spec.source {
+                        source.to_string().contains(&ip_str)
+                    } else {
+                        false
+                    }
+                })
+                .map(|c| c.state.clone())
+                .collect()
+        };
+        Ok(result)
     }
 
     #[instrument(skip(self))]
@@ -1032,8 +1043,12 @@ impl FirewallBackend for IptablesBackend {
     }
 
     async fn rule_count(&self) -> FirewallResult<usize> {
-        let cache = self.rule_cache.read();
-        Ok(cache.len())
+        // Extract count while lock is held, then drop lock before returning
+        let count = {
+            let cache = self.rule_cache.read();
+            cache.len()
+        };
+        Ok(count)
     }
 }
 
