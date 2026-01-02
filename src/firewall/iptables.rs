@@ -675,12 +675,15 @@ impl IptablesBackend {
 
     /// Check if an equivalent rule already exists
     async fn rule_exists_for_spec(&self, spec: &FirewallRuleSpec) -> FirewallResult<bool> {
-        // Check cache first
-        let cache = self.rule_cache.read();
-        if cache.contains_key(&spec.id) {
+        // Check cache first - use explicit block to ensure lock is dropped before await
+        let found_in_cache = {
+            let cache = self.rule_cache.read();
+            cache.contains_key(&spec.id)
+        }; // lock released here before any await
+
+        if found_in_cache {
             return Ok(true);
         }
-        drop(cache);
 
         // Check iptables directly
         let is_ipv6 = match &spec.source {

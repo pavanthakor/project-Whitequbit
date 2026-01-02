@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 #[cfg(unix)]
 use tokio::time::timeout;
-use tracing::{info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use super::action::{Action, ActionResult, ExecutionContext, ValidationError};
 use super::ActionError;

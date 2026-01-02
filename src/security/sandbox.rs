@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::config::SecurityConfig;
 
@@ -108,7 +108,8 @@ impl SandboxManager {
                 let fd = PathFd::new(path)
                     .map_err(|e| SecurityError::Sandbox(format!("Failed to open path {}: {}", path.display(), e)))?;
 
-                ruleset
+                // add_rule returns Result<Self, ...>, so reassign ruleset
+                ruleset = ruleset
                     .add_rule(PathBeneath::new(fd, AccessFs::from_read(abi)))
                     .map_err(|e| SecurityError::Sandbox(format!("Failed to add rule: {}", e)))?;
 
@@ -122,7 +123,8 @@ impl SandboxManager {
                 let fd = PathFd::new(path)
                     .map_err(|e| SecurityError::Sandbox(format!("Failed to open path {}: {}", path.display(), e)))?;
 
-                ruleset
+                // add_rule returns Result<Self, ...>, so reassign ruleset
+                ruleset = ruleset
                     .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi)))
                     .map_err(|e| SecurityError::Sandbox(format!("Failed to add rule: {}", e)))?;
 
@@ -149,7 +151,7 @@ impl SandboxManager {
     #[cfg(target_os = "linux")]
     fn apply_seccomp(&self) -> Result<(), SecurityError> {
         use seccompiler::{
-            BpfMap, SeccompAction, SeccompFilter, SeccompRule,
+            SeccompAction, SeccompFilter, SeccompRule,
         };
         use std::collections::BTreeMap;
 
@@ -281,15 +283,15 @@ impl SandboxManager {
         )
         .map_err(|e| SecurityError::Sandbox(format!("Failed to create seccomp filter: {}", e)))?;
 
-        // Apply the filter
-        let bpf: BpfMap = filter
+        // Compile the filter to BPF bytecode
+        // SeccompFilter::try_into() returns a Vec<sock_filter> (BPF program), not a HashMap
+        let bpf_prog: seccompiler::BpfProgram = filter
             .try_into()
-            .map_err(|e| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
+            .map_err(|e: seccompiler::BackendError| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
 
-        for (_, prog) in bpf {
-            seccompiler::apply_filter(&prog)
-                .map_err(|e| SecurityError::Sandbox(format!("Failed to apply seccomp: {}", e)))?;
-        }
+        // Apply the compiled BPF program to this thread
+        seccompiler::apply_filter(&bpf_prog)
+            .map_err(|e| SecurityError::Sandbox(format!("Failed to apply seccomp: {}", e)))?;
 
         info!("Seccomp filter applied ({} syscalls allowed)", allowed_syscalls.len());
         Ok(())
