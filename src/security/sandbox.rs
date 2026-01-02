@@ -284,10 +284,10 @@ impl SandboxManager {
         .map_err(|e| SecurityError::Sandbox(format!("Failed to create seccomp filter: {}", e)))?;
 
         // Compile the filter to BPF bytecode
-        // SeccompFilter::try_into() returns a Vec<sock_filter> (BPF program), not a HashMap
+        // SeccompFilter::try_into() returns BpfProgram (Vec<sock_filter>), not a HashMap
         let bpf_prog: seccompiler::BpfProgram = filter
             .try_into()
-            .map_err(|e: seccompiler::BackendError| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
+            .map_err(|e| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
 
         // Apply the compiled BPF program to this thread
         seccompiler::apply_filter(&bpf_prog)
