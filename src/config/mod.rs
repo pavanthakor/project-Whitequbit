@@ -121,6 +121,11 @@ pub struct SecurityConfig {
     /// Whether to apply sandbox
     pub apply_sandbox: bool,
 
+    /// Whether to use ambient capabilities (Linux-specific)
+    /// When false, ambient capabilities will not be raised, avoiding
+    /// PR_CAP_AMBIENT_RAISE errors on systems that don't support them.
+    pub use_ambient_caps: bool,
+
     /// Sandbox configuration
     pub sandbox: SandboxConfig,
 
@@ -138,6 +143,7 @@ impl Default for SecurityConfig {
             target_gid: 65534, // nogroup
             drop_privileges: true,
             apply_sandbox: true,
+            use_ambient_caps: false,
             sandbox: SandboxConfig::default(),
             allowed_client_uids: vec![0], // Only root by default
             allowed_client_gids: vec![],

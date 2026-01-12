@@ -39,6 +39,9 @@ pub struct PrivilegeManager {
     target_gid: u32,
     /// Capabilities to retain
     capabilities: RequiredCapabilities,
+    /// Whether to use ambient capabilities (Linux-only)
+    #[allow(dead_code)]
+    use_ambient_caps: bool,
 }
 
 impl PrivilegeManager {
@@ -48,6 +51,7 @@ impl PrivilegeManager {
             target_uid: config.target_uid,
             target_gid: config.target_gid,
             capabilities: RequiredCapabilities::default(),
+            use_ambient_caps: config.use_ambient_caps,
         })
     }
 
@@ -57,6 +61,7 @@ impl PrivilegeManager {
             target_uid: uid,
             target_gid: gid,
             capabilities: RequiredCapabilities::default(),
+            use_ambient_caps: false,
         }
     }
 
@@ -153,10 +158,15 @@ impl PrivilegeManager {
         keep.insert(Capability::CAP_SETUID);
         keep.insert(Capability::CAP_SETGID);
 
-        // Set ambient capabilities (so they survive execve)
-        for cap in &keep {
-            caps::raise(None, CapSet::Ambient, *cap)
-                .map_err(|e| SecurityError::Privilege(format!("Failed to raise ambient {}: {}", cap, e)))?;
+        // Set ambient capabilities (so they survive execve) only if enabled
+        if self.use_ambient_caps {
+            for cap in &keep {
+                caps::raise(None, CapSet::Ambient, *cap)
+                    .map_err(|e| SecurityError::Privilege(format!("Failed to raise ambient {}: {}", cap, e)))?;
+            }
+            tracing::debug!("Raised ambient capabilities: {:?}", keep);
+        } else {
+            tracing::info!("Ambient capabilities disabled by configuration");
         }
 
         tracing::debug!("Set up capabilities: {:?}", keep);
@@ -266,5 +276,19 @@ mod tests {
         let manager = PrivilegeManager::new(&config).unwrap();
         assert_eq!(manager.target_uid, 1000);
         assert_eq!(manager.target_gid, 1000);
+        assert!(!manager.use_ambient_caps);
+    }
+
+    #[test]
+    fn test_privilege_manager_with_ambient_caps() {
+        let config = SecurityConfig {
+            target_uid: 1000,
+            target_gid: 1000,
+            use_ambient_caps: true,
+            ..Default::default()
+        };
+
+        let manager = PrivilegeManager::new(&config).unwrap();
+        assert!(manager.use_ambient_caps);
     }
 }

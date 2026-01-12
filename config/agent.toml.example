@@ -19,6 +19,11 @@ drop_privileges = true
 # Whether to apply seccomp/landlock sandbox
 apply_sandbox = true
 
+# Whether to use ambient capabilities (Linux-specific)
+# Set to false to avoid PR_CAP_AMBIENT_RAISE errors on systems that
+# don't support ambient capabilities or when running in containers.
+use_ambient_caps = false
+
 # Allowed UIDs that can connect via IPC
 allowed_client_uids = [0]  # Only root by default
 
