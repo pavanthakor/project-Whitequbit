@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tracing::{debug, info};
+
 
 use super::{Event, EventError};
 
@@ -72,7 +72,7 @@ impl EventDispatcher {
 
     /// Stop accepting new events
     pub fn stop_accepting(&self) {
-        info!("Event dispatcher stopping event acceptance");
+        tracing::info!("Event dispatcher stopping event acceptance");
         self.accepting.store(false, Ordering::SeqCst);
     }
 
@@ -110,13 +110,13 @@ impl EventDispatcher {
             }
         }
 
-        debug!("Drained {} events during shutdown", events.len());
+        tracing::debug!("Drained {} events during shutdown", events.len());
         events
     }
 
     /// Shutdown the dispatcher
     pub async fn shutdown(self) {
-        info!("Shutting down event dispatcher");
+        tracing::info!("Shutting down event dispatcher");
 
         // Wait for source tasks to complete
         for handle in self.source_handles {
@@ -126,7 +126,7 @@ impl EventDispatcher {
         // Close the channel
         drop(self.event_tx);
 
-        info!("Event dispatcher shutdown complete");
+        tracing::info!("Event dispatcher shutdown complete");
     }
 }
 

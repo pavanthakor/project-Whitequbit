@@ -6,7 +6,6 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use super::action::{Action, ActionId, ActionResult, ExecutionContext, ValidationError};
 use super::privileged_executor::{Capability, CapabilitySet};
@@ -332,7 +331,7 @@ impl Action for FirewallAction {
 
     fn execute(&self, ctx: &ExecutionContext) -> Result<ActionResult, ActionError> {
         let command = self.build_command();
-        info!("Executing firewall command: {:?}", command);
+        tracing::info!("Executing firewall command: {:?}", command);
 
         if ctx.dry_run {
             return Ok(ActionResult::no_change(format!(

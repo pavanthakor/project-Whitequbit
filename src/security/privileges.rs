@@ -2,7 +2,7 @@
 //!
 //! Handles dropping privileges after startup.
 
-use tracing::{debug, info, warn};
+
 
 use crate::config::SecurityConfig;
 
@@ -84,11 +84,11 @@ impl PrivilegeManager {
         use nix::unistd::{setgid, setgroups, setuid, Gid, Uid};
 
         if !Self::is_root() {
-            warn!("Not running as root, skipping privilege drop");
+            tracing::warn!("Not running as root, skipping privilege drop");
             return Ok(());
         }
 
-        info!(
+        tracing::info!(
             "Dropping privileges to uid={} gid={}",
             self.target_uid, self.target_gid
         );
@@ -100,19 +100,19 @@ impl PrivilegeManager {
         setgroups(&[]).map_err(|e| {
             SecurityError::Privilege(format!("Failed to clear supplementary groups: {}", e))
         })?;
-        debug!("Cleared supplementary groups");
+        tracing::debug!("Cleared supplementary groups");
 
         // Set GID first (while still root)
         setgid(Gid::from_raw(self.target_gid)).map_err(|e| {
             SecurityError::Privilege(format!("Failed to set gid: {}", e))
         })?;
-        debug!("Set GID to {}", self.target_gid);
+        tracing::debug!("Set GID to {}", self.target_gid);
 
         // Set UID last
         setuid(Uid::from_raw(self.target_uid)).map_err(|e| {
             SecurityError::Privilege(format!("Failed to set uid: {}", e))
         })?;
-        debug!("Set UID to {}", self.target_uid);
+        tracing::debug!("Set UID to {}", self.target_uid);
 
         // Finalize capabilities (drop bounding set)
         self.finalize_capabilities()?;
@@ -120,14 +120,14 @@ impl PrivilegeManager {
         // Set no_new_privs to prevent regaining privileges
         self.set_no_new_privs()?;
 
-        info!("Privilege drop complete");
+        tracing::info!("Privilege drop complete");
         Ok(())
     }
 
     /// Drop privileges (non-Unix fallback)
     #[cfg(not(unix))]
     pub fn drop_privileges(&self) -> Result<(), SecurityError> {
-        warn!("Privilege dropping not supported on this platform");
+        tracing::warn!("Privilege dropping not supported on this platform");
         Ok(())
     }
 
@@ -159,7 +159,7 @@ impl PrivilegeManager {
                 .map_err(|e| SecurityError::Privilege(format!("Failed to raise ambient {}: {}", cap, e)))?;
         }
 
-        debug!("Set up capabilities: {:?}", keep);
+        tracing::debug!("Set up capabilities: {:?}", keep);
         Ok(())
     }
 
@@ -167,7 +167,7 @@ impl PrivilegeManager {
     #[allow(dead_code)]
     #[cfg(not(all(unix, target_os = "linux")))]
     fn setup_capabilities(&self) -> Result<(), SecurityError> {
-        debug!("Capability management not supported on this platform");
+        tracing::debug!("Capability management not supported on this platform");
         Ok(())
     }
 
@@ -188,7 +188,7 @@ impl PrivilegeManager {
         caps::drop(None, CapSet::Permitted, Capability::CAP_SETGID)
             .map_err(|e| SecurityError::Privilege(format!("Failed to drop permitted CAP_SETGID: {}", e)))?;
 
-        debug!("Finalized capabilities");
+        tracing::debug!("Finalized capabilities");
         Ok(())
     }
 
@@ -215,7 +215,7 @@ impl PrivilegeManager {
             ));
         }
 
-        debug!("Set PR_SET_NO_NEW_PRIVS");
+        tracing::debug!("Set PR_SET_NO_NEW_PRIVS");
         Ok(())
     }
 

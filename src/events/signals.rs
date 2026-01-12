@@ -3,7 +3,7 @@
 //! Handles Unix signals for the agent.
 
 use tokio::sync::broadcast;
-use tracing::{debug, info};
+
 
 /// Signal types that the agent handles
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,29 +68,29 @@ impl SignalHandler {
         loop {
             let signal = tokio::select! {
                 _ = sigterm.recv() => {
-                    info!("Received SIGTERM");
+                    tracing::info!("Received SIGTERM");
                     Signal::Terminate
                 }
                 _ = sigint.recv() => {
-                    info!("Received SIGINT");
+                    tracing::info!("Received SIGINT");
                     Signal::Interrupt
                 }
                 _ = sighup.recv() => {
-                    info!("Received SIGHUP");
+                    tracing::info!("Received SIGHUP");
                     Signal::Hangup
                 }
                 _ = sigusr1.recv() => {
-                    debug!("Received SIGUSR1");
+                    tracing::debug!("Received SIGUSR1");
                     Signal::User1
                 }
                 _ = sigusr2.recv() => {
-                    debug!("Received SIGUSR2");
+                    tracing::debug!("Received SIGUSR2");
                     Signal::User2
                 }
             };
 
             if tx.send(signal).is_err() {
-                debug!("No signal receivers, continuing");
+                tracing::debug!("No signal receivers, continuing");
             }
 
             // Exit loop on terminate signals
@@ -99,14 +99,14 @@ impl SignalHandler {
             }
         }
 
-        info!("Signal handler loop exiting");
+        tracing::info!("Signal handler loop exiting");
     }
 
     #[cfg(not(unix))]
     async fn signal_loop(tx: broadcast::Sender<Signal>) {
         // Windows signal handling
         if let Ok(()) = tokio::signal::ctrl_c().await {
-            info!("Received Ctrl+C");
+            tracing::info!("Received Ctrl+C");
             let _ = tx.send(Signal::Interrupt);
         }
     }

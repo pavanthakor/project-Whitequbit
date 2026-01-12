@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+
 
 use crate::actions::Action;
 
@@ -231,7 +231,7 @@ impl PolicyEngine {
 
         match decision {
             Decision::Allow => {
-                debug!(
+                tracing::debug!(
                     "Authorized action {} for client {}",
                     action.action_type(),
                     client.client_id
@@ -239,7 +239,7 @@ impl PolicyEngine {
                 Ok(())
             }
             Decision::Deny => {
-                warn!(
+                tracing::warn!(
                     "Denied action {} for client {}",
                     action.action_type(),
                     client.client_id
@@ -262,7 +262,7 @@ impl PolicyEngine {
         // Find first matching rule
         for rule in rules {
             if rule.matches(action, client) {
-                debug!(
+                tracing::debug!(
                     "Rule '{}' matched for action {} client {}",
                     rule.name,
                     action.action_type(),
@@ -277,7 +277,7 @@ impl PolicyEngine {
         }
 
         // No rule matched, use default
-        debug!(
+        tracing::debug!(
             "No rule matched, using default decision for action {}",
             action.action_type()
         );
@@ -290,7 +290,7 @@ impl PolicyEngine {
 
     /// Reload policy
     pub fn reload(&mut self, policy: Policy) {
-        info!("Reloading policy: {}", policy.name);
+        tracing::info!("Reloading policy: {}", policy.name);
         self.policy = policy;
         self.cache.clear();
     }

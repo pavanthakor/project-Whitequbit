@@ -7,7 +7,6 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::debug;
 
 use crate::actions::ActionResult;
 use crate::config::AgentConfig;
@@ -213,7 +212,7 @@ impl AuditLogger {
         state.next_sequence += 1;
         state.last_hash = entry.hash.clone();
 
-        debug!("Audit entry {}: {:?}", entry.sequence, entry.event_type);
+        tracing::debug!("Audit entry {}: {:?}", entry.sequence, entry.event_type);
         Ok(entry)
     }
 
@@ -237,7 +236,7 @@ impl AuditLogger {
         state.next_sequence += 1;
         state.last_hash = entry.hash.clone();
 
-        debug!("Audit entry {}: {:?}", entry.sequence, entry.event_type);
+        tracing::debug!("Audit entry {}: {:?}", entry.sequence, entry.event_type);
         Ok(entry)
     }
 

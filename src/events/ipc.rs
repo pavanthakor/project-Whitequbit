@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+
 
 use super::source::{ClientInfo, Event, EventSource, EventType};
 use super::EventError;
@@ -104,7 +104,7 @@ impl IpcEventSource {
         let shutdown = self.shutdown.clone();
 
         tokio::spawn(async move {
-            info!("IPC event source background task started");
+            tracing::info!("IPC event source background task started");
             
             // Periodic cleanup loop
             let mut interval = tokio::time::interval(Duration::from_secs(60));
@@ -130,7 +130,7 @@ impl IpcEventSource {
         rate_limiter: Arc<tokio::sync::Mutex<RateLimiter>>,
     ) {
         let client_id = format!("client-{}", client_count.fetch_add(1, Ordering::SeqCst));
-        info!("New IPC client connected: {}", client_id);
+        tracing::info!("New IPC client connected: {}", client_id);
 
         // Get peer credentials
         let client_info = Self::get_peer_credentials(&stream, &client_id);
@@ -145,7 +145,7 @@ impl IpcEventSource {
             match reader.read_line(&mut line).await {
                 Ok(0) => {
                     // Connection closed
-                    debug!("Client {} disconnected", client_id);
+                    tracing::debug!("Client {} disconnected", client_id);
                     break;
                 }
                 Ok(_) => {
@@ -153,7 +153,7 @@ impl IpcEventSource {
                     {
                         let mut limiter = rate_limiter.lock().await;
                         if !limiter.check(&client_id) {
-                            warn!("Client {} rate limited", client_id);
+                            tracing::warn!("Client {} rate limited", client_id);
                             let _ = writer.write_all(b"ERROR: rate limited\n").await;
                             continue;
                         }
@@ -162,7 +162,7 @@ impl IpcEventSource {
                     // Parse the event
                     match Self::parse_message(&line, client_info.clone()) {
                         Ok(event) => {
-                            debug!("Received event {:?} from {}", event.id(), client_id);
+                            tracing::debug!("Received event {:?} from {}", event.id(), client_id);
 
                             // Send acknowledgment
                             let ack = format!("OK: {}\n", event.id());
@@ -170,25 +170,25 @@ impl IpcEventSource {
 
                             // Forward event
                             if event_tx.send(event).await.is_err() {
-                                error!("Event channel closed");
+                                tracing::error!("Event channel closed");
                                 break;
                             }
                         }
                         Err(e) => {
-                            warn!("Failed to parse message from {}: {}", client_id, e);
+                            tracing::warn!("Failed to parse message from {}: {}", client_id, e);
                             let error_msg = format!("ERROR: {}\n", e);
                             let _ = writer.write_all(error_msg.as_bytes()).await;
                         }
                     }
                 }
                 Err(e) => {
-                    error!("Error reading from client {}: {}", client_id, e);
+                    tracing::error!("Error reading from client {}: {}", client_id, e);
                     break;
                 }
             }
         }
 
-        info!("Client {} handler exiting", client_id);
+        tracing::info!("Client {} handler exiting", client_id);
     }
 
     /// Get peer credentials from Unix socket
@@ -315,7 +315,7 @@ impl EventSource for IpcEventSource {
                         });
                     }
                     Err(e) => {
-                        error!("Failed to accept connection: {}", e);
+                        tracing::error!("Failed to accept connection: {}", e);
                     }
                 }
             }
@@ -329,7 +329,7 @@ impl EventSource for IpcEventSource {
 
     async fn shutdown(&mut self) {
         self.shutdown.store(true, Ordering::SeqCst);
-        info!("IPC event source shutdown");
+        tracing::info!("IPC event source shutdown");
     }
 
     fn name(&self) -> &str {

@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use tracing::{debug, info};
+
 
 use super::{AgentConfig, ConfigError};
 
@@ -14,7 +14,7 @@ pub struct ConfigLoader;
 impl ConfigLoader {
     /// Load configuration from a file
     pub fn load(path: &PathBuf) -> Result<AgentConfig, ConfigError> {
-        info!("Loading configuration from {}", path.display());
+        tracing::info!("Loading configuration from {}", path.display());
 
         let content = std::fs::read_to_string(path)?;
         let mut config = Self::from_str(&content)?;
@@ -22,7 +22,7 @@ impl ConfigLoader {
         // Store the config path
         config.config_path = path.clone();
 
-        debug!("Configuration loaded successfully");
+        tracing::debug!("Configuration loaded successfully");
         Ok(config)
     }
 
@@ -67,7 +67,7 @@ impl ConfigLoader {
         }
 
         std::fs::write(path, content)?;
-        info!("Created default configuration at {}", path.display());
+        tracing::info!("Created default configuration at {}", path.display());
 
         Ok(())
     }

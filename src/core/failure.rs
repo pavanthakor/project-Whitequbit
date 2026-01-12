@@ -35,7 +35,7 @@ use blake3::Hasher;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{error, info, instrument, warn};
+use tracing::instrument;
 
 // ============================================================================
 // Error Types
@@ -417,7 +417,7 @@ impl KillSwitch {
             .map_err(|e| FailureError::Serialization(e.to_string()))?;
 
         if persisted.active {
-            warn!("Kill-switch was active before restart, restoring state");
+            tracing::warn!("Kill-switch was active before restart, restoring state");
             self.active.store(true, Ordering::SeqCst);
             *self.state.write().unwrap() = persisted;
             return Ok(true);
@@ -455,7 +455,7 @@ impl KillSwitch {
     #[instrument(skip(self, reason))]
     pub fn activate(&self, reason: impl Into<String>, failure_id: u64) -> FailureResult<()> {
         let reason = reason.into();
-        error!("KILL-SWITCH ACTIVATED: {}", reason);
+        tracing::error!("KILL-SWITCH ACTIVATED: {}", reason);
 
         // Set atomic flag first (fast rejection of new requests)
         self.active.store(true, Ordering::SeqCst);
@@ -488,18 +488,18 @@ impl KillSwitch {
 
     /// Apply safe defaults (firewall rules, etc.)
     fn apply_safe_defaults(&self) -> FailureResult<()> {
-        info!("Applying safe defaults");
+        tracing::info!("Applying safe defaults");
 
         // In production, this would call the firewall module
         // For now, we log what would be done
 
         let fw = &self.defaults.firewall;
-        info!("Would set INPUT policy to {:?}", fw.input_policy);
-        info!("Would set OUTPUT policy to {:?}", fw.output_policy);
-        info!("Would set FORWARD policy to {:?}", fw.forward_policy);
+        tracing::info!("Would set INPUT policy to {:?}", fw.input_policy);
+        tracing::info!("Would set OUTPUT policy to {:?}", fw.output_policy);
+        tracing::info!("Would set FORWARD policy to {:?}", fw.forward_policy);
 
         for port in &fw.allowed_ports {
-            info!(
+            tracing::info!(
                 "Would allow {} port {} ({})",
                 port.protocol, port.port, port.description
             );
@@ -515,7 +515,7 @@ impl KillSwitch {
     #[instrument(skip(self, operator))]
     pub fn deactivate(&self, operator: impl Into<String>) -> FailureResult<()> {
         let operator = operator.into();
-        info!("Kill-switch deactivated by operator: {}", operator);
+        tracing::info!("Kill-switch deactivated by operator: {}", operator);
 
         self.active.store(false, Ordering::SeqCst);
 
@@ -622,7 +622,7 @@ impl InFlightTracker {
             match serde_json::from_str::<InFlightAction>(&line) {
                 Ok(action) => actions.push(action),
                 Err(e) => {
-                    warn!("Failed to parse in-flight action: {}", e);
+                    tracing::warn!("Failed to parse in-flight action: {}", e);
                 }
             }
         }
@@ -825,10 +825,10 @@ impl ConfigValidator {
                 return Ok((config, result));
             }
             Ok((_, result)) => {
-                warn!("Primary config invalid: {:?}", result.errors);
+                tracing::warn!("Primary config invalid: {:?}", result.errors);
             }
             Err(e) => {
-                warn!("Failed to load primary config: {}", e);
+                tracing::warn!("Failed to load primary config: {}", e);
             }
         }
 
@@ -837,17 +837,17 @@ impl ConfigValidator {
             match self.try_load_and_validate(&self.fallback_path) {
                 Ok((config, mut result)) if result.valid => {
                     result.used_fallback = true;
-                    warn!("Using fallback configuration");
+                    tracing::warn!("Using fallback configuration");
                     return Ok((config, result));
                 }
                 _ => {
-                    warn!("Fallback config also invalid");
+                    tracing::warn!("Fallback config also invalid");
                 }
             }
         }
 
         // Use safe minimum
-        error!("Using safe minimum configuration - agent functionality limited");
+        tracing::error!("Using safe minimum configuration - agent functionality limited");
         let result = ConfigValidationResult {
             valid: true,
             errors: Vec::new(),
@@ -990,7 +990,7 @@ impl RecoveryCoordinator {
     /// Perform startup recovery
     #[instrument(skip(self))]
     pub fn startup_recovery(&self) -> FailureResult<StartupRecoveryResult> {
-        info!("Starting recovery coordinator");
+        tracing::info!("Starting recovery coordinator");
 
         let mut result = StartupRecoveryResult::default();
 
@@ -998,13 +998,13 @@ impl RecoveryCoordinator {
         if self.kill_switch.load_state()? {
             result.kill_switch_was_active = true;
             result.requires_intervention = true;
-            warn!("Kill-switch was active - operator acknowledgment required");
+            tracing::warn!("Kill-switch was active - operator acknowledgment required");
         }
 
         // 2. Load in-flight actions
         let in_flight = self.in_flight.load()?;
         if !in_flight.is_empty() {
-            warn!("Found {} in-flight actions from previous run", in_flight.len());
+            tracing::warn!("Found {} in-flight actions from previous run", in_flight.len());
             result.in_flight_count = in_flight.len();
 
             // Attempt recovery for each
@@ -1019,7 +1019,7 @@ impl RecoveryCoordinator {
                         }
                     }
                     Err(e) => {
-                        error!("Failed to recover action {}: {}", action.action_id, e);
+                        tracing::error!("Failed to recover action {}: {}", action.action_id, e);
                         result.actions_failed += 1;
                         result.requires_intervention = true;
                     }
@@ -1056,42 +1056,42 @@ impl RecoveryCoordinator {
             }
         }
 
-        info!("Recovery complete: {:?}", result);
+        tracing::info!("Recovery complete: {:?}", result);
         Ok(result)
     }
 
     /// Attempt to recover a single action
     fn recover_action(&self, action: &InFlightAction) -> FailureResult<bool> {
-        info!("Recovering action {}: phase={:?}", action.action_id, action.phase);
+        tracing::info!("Recovering action {}: phase={:?}", action.action_id, action.phase);
 
         match action.phase {
             ActionPhase::Preparing | ActionPhase::Logged => {
                 // Action never executed - safe to discard
-                info!("Action {} never executed, discarding", action.action_id);
+                tracing::info!("Action {} never executed, discarding", action.action_id);
                 self.in_flight.complete(&action.action_id)?;
                 Ok(true)
             }
 
             ActionPhase::Executing | ActionPhase::Verifying => {
                 // Action may have partially executed - need rollback
-                warn!("Action {} was mid-execution, attempting rollback", action.action_id);
+                tracing::warn!("Action {} was mid-execution, attempting rollback", action.action_id);
 
                 if let Some(ref comp_data) = action.compensation_data {
                     // We have compensation data - attempt rollback
                     // TODO: Actually execute compensation via Compensator
-                    info!("Would execute compensation: {:?}", comp_data);
+                    tracing::info!("Would execute compensation: {:?}", comp_data);
                     self.in_flight.update_phase(&action.action_id, ActionPhase::RolledBack)?;
                     self.in_flight.complete(&action.action_id)?;
                     Ok(true)
                 } else if let Some(ref pre_state) = action.pre_state {
                     // We have pre-state - attempt to restore
-                    info!("Would restore pre-state: {:?}", pre_state);
+                    tracing::info!("Would restore pre-state: {:?}", pre_state);
                     self.in_flight.update_phase(&action.action_id, ActionPhase::RolledBack)?;
                     self.in_flight.complete(&action.action_id)?;
                     Ok(true)
                 } else {
                     // No recovery data - mark as failed
-                    error!("Action {} has no recovery data", action.action_id);
+                    tracing::error!("Action {} has no recovery data", action.action_id);
                     self.in_flight.update_phase(&action.action_id, ActionPhase::Failed)?;
                     Ok(false)
                 }
@@ -1105,7 +1105,7 @@ impl RecoveryCoordinator {
 
             ActionPhase::RollingBack => {
                 // Rollback was in progress - retry
-                warn!("Action {} rollback was interrupted", action.action_id);
+                tracing::warn!("Action {} rollback was interrupted", action.action_id);
                 // TODO: Retry rollback
                 self.in_flight.update_phase(&action.action_id, ActionPhase::Failed)?;
                 Ok(false)
@@ -1412,7 +1412,7 @@ impl CircuitBreaker {
             return;
         }
 
-        info!("Circuit breaker: {:?} -> {:?}", old_state, new_state);
+        tracing::info!("Circuit breaker: {:?} -> {:?}", old_state, new_state);
 
         *state = new_state;
 

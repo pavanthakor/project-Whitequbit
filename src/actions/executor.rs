@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use tokio::time::timeout;
-use tracing::{debug, error, info, instrument};
+use tracing::instrument;
 
 use super::action::{Action, ActionResult, ExecutionContext};
 use super::ActionError;
@@ -46,7 +46,7 @@ impl ActionExecutor {
             .min(MAX_TIMEOUT)
             .max(DEFAULT_TIMEOUT);
 
-        info!("Executing action with timeout {:?}", timeout_duration);
+        tracing::info!("Executing action with timeout {:?}", timeout_duration);
 
         // Execute with timeout
         let result = timeout(timeout_duration, self.execute_inner(action)).await;
@@ -54,7 +54,7 @@ impl ActionExecutor {
         match result {
             Ok(inner_result) => inner_result,
             Err(_) => {
-                error!("Action {:?} timed out", action_id);
+                tracing::error!("Action {:?} timed out", action_id);
                 Err(ActionError::Timeout(timeout_duration))
             }
         }
@@ -70,7 +70,7 @@ impl ActionExecutor {
         // 5. Kill the child if it exceeds timeout
 
         // For now, we execute directly (not production-safe)
-        debug!("Executing action directly (sandbox not implemented)");
+        tracing::debug!("Executing action directly (sandbox not implemented)");
 
         #[cfg(unix)]
         {
@@ -162,7 +162,7 @@ impl ActionExecutor {
     /// Execute a compensation action (rollback)
     #[instrument(skip(self, action), fields(action_id = %action.id()))]
     pub async fn execute_rollback(&self, action: &dyn Action) -> Result<ActionResult, ActionError> {
-        info!("Executing rollback action");
+        tracing::info!("Executing rollback action");
         self.execute(action).await
     }
 }

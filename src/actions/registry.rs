@@ -5,7 +5,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tracing::debug;
 
 use super::action::Action;
 use super::firewall::FirewallAction;
@@ -52,7 +51,7 @@ impl ActionRegistry {
 
     /// Register a new action type
     pub fn register(&mut self, action_type: &str, factory: ActionFactory) {
-        debug!("Registering action type: {}", action_type);
+        tracing::debug!("Registering action type: {}", action_type);
         self.factories.insert(action_type.to_string(), factory);
     }
 

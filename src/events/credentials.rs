@@ -6,7 +6,7 @@
 use std::os::unix::net::UnixStream;
 use std::io;
 
-use tracing::{debug, info, warn};
+
 
 /// Peer credentials from a Unix socket connection
 #[derive(Debug, Clone)]
@@ -107,7 +107,7 @@ impl Default for IpcAuthPolicy {
 impl IpcAuthPolicy {
     /// Create a permissive policy (for development only!)
     pub fn permissive() -> Self {
-        warn!("Using permissive IPC auth policy - NOT FOR PRODUCTION");
+        tracing::warn!("Using permissive IPC auth policy - NOT FOR PRODUCTION");
         Self {
             allowed_uids: vec![],
             allowed_gids: vec![],
@@ -134,26 +134,26 @@ impl IpcAuthPolicy {
 
     /// Check if a peer is authorized to connect
     pub fn authorize(&self, creds: &PeerCredentials) -> Result<(), IpcAuthError> {
-        debug!(
+        tracing::debug!(
             "Authorizing peer: pid={}, uid={}, gid={}",
             creds.pid, creds.uid, creds.gid
         );
 
         // Always allow root
         if creds.is_root() {
-            info!("Authorized: peer is root (pid={})", creds.pid);
+            tracing::info!("Authorized: peer is root (pid={})", creds.pid);
             return Ok(());
         }
 
         // Check if any user is allowed
         if self.allow_any {
-            info!("Authorized: allow_any is set (pid={})", creds.pid);
+            tracing::info!("Authorized: allow_any is set (pid={})", creds.pid);
             return Ok(());
         }
 
         // Check allowed UIDs
         if !self.allowed_uids.is_empty() && self.allowed_uids.contains(&creds.uid) {
-            info!(
+            tracing::info!(
                 "Authorized: uid {} in allowlist (pid={})",
                 creds.uid, creds.pid
             );
@@ -162,7 +162,7 @@ impl IpcAuthPolicy {
 
         // Check allowed GIDs
         if !self.allowed_gids.is_empty() && self.allowed_gids.contains(&creds.gid) {
-            info!(
+            tracing::info!(
                 "Authorized: gid {} in allowlist (pid={})",
                 creds.gid, creds.pid
             );
@@ -170,7 +170,7 @@ impl IpcAuthPolicy {
         }
 
         // Deny by default
-        warn!(
+        tracing::warn!(
             "Denied: peer uid={} gid={} not authorized (pid={})",
             creds.uid, creds.gid, creds.pid
         );
@@ -191,7 +191,7 @@ impl IpcAuthPolicy {
 
         // Then check if privileged access is needed
         if self.require_root_for_privileged && !creds.is_root() {
-            warn!(
+            tracing::warn!(
                 "Denied privileged action '{}': peer not root (uid={}, pid={})",
                 action_type, creds.uid, creds.pid
             );

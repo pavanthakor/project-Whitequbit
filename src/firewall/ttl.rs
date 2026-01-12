@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::Notify;
 use tokio::time::Instant;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::instrument;
 
 use crate::firewall::{FirewallBackend, FirewallError, RuleId};
 
@@ -851,7 +851,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
     /// Recover state from disk after restart
     #[instrument(skip(self))]
     pub async fn recover(&self) -> TtlResult<RecoveryStats> {
-        info!("Recovering TTL state from disk");
+        tracing::info!("Recovering TTL state from disk");
         let mut stats = RecoveryStats::default();
 
         let entries = self.persister.load()?;
@@ -887,12 +887,12 @@ impl<B: FirewallBackend> TtlEngine<B> {
             }
         }
 
-        info!(?stats, "TTL recovery complete");
+        tracing::info!(?stats, "TTL recovery complete");
 
         // Process expired and failed rules
         for entry in expired_rules.into_iter().chain(failed_rules.into_iter()) {
             if let Err(e) = self.process_single_expiration(&entry).await {
-                warn!(rule_id = %entry.rule_id, error = %e, "Failed to process expired rule during recovery");
+                tracing::warn!(rule_id = %entry.rule_id, error = %e, "Failed to process expired rule during recovery");
             }
         }
 
@@ -935,7 +935,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
         // Reschedule timer if this is the soonest expiration
         self.reschedule_timer();
 
-        info!(%rule_id, ttl_secs = ttl.as_secs(), "Registered TTL");
+        tracing::info!(%rule_id, ttl_secs = ttl.as_secs(), "Registered TTL");
         Ok(())
     }
 
@@ -949,7 +949,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
         if let Some(_entry) = cancelled {
             // Persist cancellation
             let _ = self.persister.remove(rule_id);
-            debug!(%rule_id, "Cancelled TTL");
+            tracing::debug!(%rule_id, "Cancelled TTL");
         }
     }
 
@@ -987,7 +987,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
         // Reschedule timer
         self.reschedule_timer();
 
-        info!(%rule_id, additional_secs = additional.as_secs(), "Extended TTL");
+        tracing::info!(%rule_id, additional_secs = additional.as_secs(), "Extended TTL");
         Ok(())
     }
 
@@ -1037,14 +1037,14 @@ impl<B: FirewallBackend> TtlEngine<B> {
             return Ok(0);
         }
 
-        info!(count = expired.len(), "Processing expired TTL rules");
+        tracing::info!(count = expired.len(), "Processing expired TTL rules");
         let mut processed = 0;
 
         for entry in expired {
             match self.process_single_expiration(&entry).await {
                 Ok(()) => processed += 1,
                 Err(e) => {
-                    warn!(rule_id = %entry.rule_id, error = %e, "Failed to expire rule");
+                    tracing::warn!(rule_id = %entry.rule_id, error = %e, "Failed to expire rule");
                 }
             }
         }
@@ -1061,7 +1061,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
         match self.coordinator.try_acquire_ttl_removal(rule_id) {
             Ok(()) => {}
             Err(CoordinationError::RollbackInProgress) => {
-                debug!(%rule_id, "Deferring expiration due to rollback");
+                tracing::debug!(%rule_id, "Deferring expiration due to rollback");
                 return Ok(()); // Will retry on next tick
             }
             Err(CoordinationError::AlreadyRemoved) => {
@@ -1093,7 +1093,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
                 let _ = registry.mark_expired(rule_id);
                 self.persister.remove(rule_id)?;
                 self.coordinator.complete_removal(rule_id);
-                info!(%rule_id, "TTL expired, rule removed");
+                tracing::info!(%rule_id, "TTL expired, rule removed");
                 Ok(())
             }
             Err(FirewallError::RuleNotFound(_)) => {
@@ -1102,7 +1102,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
                 let _ = registry.mark_expired(rule_id);
                 self.persister.remove(rule_id)?;
                 self.coordinator.complete_removal(rule_id);
-                debug!(%rule_id, "Rule already removed (TTL cleanup)");
+                tracing::debug!(%rule_id, "Rule already removed (TTL cleanup)");
                 Ok(())
             }
             Err(e) => {
@@ -1129,7 +1129,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
     /// Shutdown the TTL engine
     pub fn shutdown(&self) {
         self.shutdown.store(true, Ordering::SeqCst);
-        info!("TTL engine shut down");
+        tracing::info!("TTL engine shut down");
     }
 
     /// Compact the persistence log
@@ -1140,7 +1140,7 @@ impl<B: FirewallBackend> TtlEngine<B> {
         };
 
         self.persister.compact(&entries)?;
-        info!(entries = entries.len(), "Compacted TTL log");
+        tracing::info!(entries = entries.len(), "Compacted TTL log");
         Ok(())
     }
 }

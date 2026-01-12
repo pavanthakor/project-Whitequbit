@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use tracing::{debug, error, info, warn};
+
 
 use super::journal::{JournalEntryId, UncommittedEntry};
 
@@ -90,7 +90,7 @@ impl Compensator {
 
     /// Execute a single compensation action with retries
     pub async fn compensate(&self, entry: &UncommittedEntry) -> CompensationResult {
-        info!(
+        tracing::info!(
             "Compensating action {} (entry {})",
             entry.action_id, entry.id
         );
@@ -98,7 +98,7 @@ impl Compensator {
         let handler = match self.handlers.get(&entry.action_type) {
             Some(h) => h,
             None => {
-                warn!(
+                tracing::warn!(
                     "No handler registered for action type: {}",
                     entry.action_type
                 );
@@ -112,19 +112,19 @@ impl Compensator {
         let mut last_error = String::new();
 
         for attempt in 1..=self.max_retries {
-            debug!(
+            tracing::debug!(
                 "Compensation attempt {}/{} for entry {}",
                 attempt, self.max_retries, entry.id
             );
 
             match handler(&entry.action_type, &entry.compensation_data).await {
                 Ok(()) => {
-                    info!("Compensation succeeded for entry {}", entry.id);
+                    tracing::info!("Compensation succeeded for entry {}", entry.id);
                     return CompensationResult::success(entry.id);
                 }
                 Err(e) => {
                     last_error = e;
-                    warn!(
+                    tracing::warn!(
                         "Compensation attempt {} failed for entry {}: {}",
                         attempt, entry.id, last_error
                     );
@@ -136,7 +136,7 @@ impl Compensator {
             }
         }
 
-        error!(
+        tracing::error!(
             "Compensation failed for entry {} after {} retries: {}",
             entry.id, self.max_retries, last_error
         );
@@ -152,7 +152,7 @@ impl Compensator {
         // Sort by entry ID descending (LIFO order)
         entries.sort_by(|a, b| b.id.as_u64().cmp(&a.id.as_u64()));
 
-        info!(
+        tracing::info!(
             "Compensating {} entries in LIFO order",
             entries.len()
         );
@@ -166,7 +166,7 @@ impl Compensator {
 
             if !success {
                 // Continue trying other compensations, but log the failure
-                warn!(
+                tracing::warn!(
                     "Compensation failed for entry {}, continuing with others",
                     entry.id
                 );
@@ -176,7 +176,7 @@ impl Compensator {
         let succeeded = results.iter().filter(|r| r.success).count();
         let failed = results.len() - succeeded;
 
-        info!(
+        tracing::info!(
             "Compensation complete: {} succeeded, {} failed",
             succeeded, failed
         );

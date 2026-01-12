@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
+
 
 use crate::events::ClientInfo;
 
@@ -145,7 +145,7 @@ impl AuthManager {
             || (uid == 0 && self.config.allow_root);
 
         if !uid_allowed {
-            warn!("Authentication denied for uid={}", uid);
+            tracing::warn!("Authentication denied for uid={}", uid);
             return Err(SecurityError::Authentication(format!(
                 "UID {} not in allowed list",
                 uid
@@ -157,7 +157,7 @@ impl AuthManager {
             || self.config.allowed_gids.is_empty();
 
         if !gid_allowed {
-            warn!("Authentication denied for gid={}", gid);
+            tracing::warn!("Authentication denied for gid={}", gid);
             return Err(SecurityError::Authentication(format!(
                 "GID {} not in allowed list",
                 gid
@@ -170,7 +170,7 @@ impl AuthManager {
         // Assign roles based on UID/GID
         let roles = self.get_roles_for_uid(uid);
 
-        info!("Client authenticated: uid={} gid={}", uid, gid);
+        tracing::info!("Client authenticated: uid={} gid={}", uid, gid);
 
         Ok(ClientAuth {
             client_id: client_info.id.clone(),
@@ -200,7 +200,7 @@ impl AuthManager {
         let token_hash = Self::hash_token(token);
 
         let token_config = self.config.tokens.get(&token_hash).ok_or_else(|| {
-            warn!("Invalid token for client {}", client_id);
+            tracing::warn!("Invalid token for client {}", client_id);
             SecurityError::Authentication("Invalid token".to_string())
         })?;
 
@@ -211,7 +211,7 @@ impl AuthManager {
             }
         }
 
-        info!("Client {} authenticated with token", client_id);
+        tracing::info!("Client {} authenticated with token", client_id);
 
         Ok(ClientAuth {
             client_id: client_id.to_string(),

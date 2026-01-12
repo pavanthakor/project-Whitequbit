@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+
 
 use super::journal::JournalEntryId;
 use super::RollbackError;
@@ -141,7 +141,7 @@ impl CheckpointManager {
         // Cleanup old checkpoints
         self.cleanup_old_checkpoints()?;
 
-        info!("Created checkpoint {} at entry {}", id, last_entry_id);
+        tracing::info!("Created checkpoint {} at entry {}", id, last_entry_id);
         Ok(checkpoint)
     }
 
@@ -176,11 +176,11 @@ impl CheckpointManager {
                     if checkpoint.verify() {
                         return Ok(Some(checkpoint));
                     } else {
-                        debug!("Checkpoint {} failed verification, trying older", id);
+                        tracing::debug!("Checkpoint {} failed verification, trying older", id);
                     }
                 }
                 Err(e) => {
-                    debug!("Failed to load checkpoint {}: {}", id, e);
+                    tracing::debug!("Failed to load checkpoint {}: {}", id, e);
                 }
             }
         }
@@ -231,9 +231,9 @@ impl CheckpointManager {
             if let Some(oldest) = checkpoints.first().copied() {
                 let path = self.checkpoint_path(oldest);
                 if let Err(e) = std::fs::remove_file(&path) {
-                    debug!("Failed to remove old checkpoint {}: {}", oldest, e);
+                    tracing::debug!("Failed to remove old checkpoint {}: {}", oldest, e);
                 } else {
-                    info!("Removed old checkpoint {}", oldest);
+                    tracing::info!("Removed old checkpoint {}", oldest);
                 }
                 checkpoints.remove(0);
             } else {

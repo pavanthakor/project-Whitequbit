@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use tokio::sync::Notify;
 use tokio::time::interval;
-use tracing::{debug, error, warn};
+
 
 /// Heartbeat interval
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -47,7 +47,7 @@ impl SupervisorClient {
                         Self::send_heartbeat().await;
                     }
                     _ = shutdown_notify.notified() => {
-                        debug!("Heartbeat task shutting down");
+                        tracing::debug!("Heartbeat task shutting down");
                         break;
                     }
                 }
@@ -68,7 +68,7 @@ impl SupervisorClient {
         // 2. Send a signal to parent
         // 3. Write to a pipe
         // For now, we just log
-        debug!("Sending heartbeat to supervisor");
+        tracing::debug!("Sending heartbeat to supervisor");
 
         #[cfg(unix)]
         {
@@ -79,7 +79,7 @@ impl SupervisorClient {
             if ppid.as_raw() > 1 {
                 // Parent is not init, send heartbeat signal
                 if let Err(e) = kill(ppid, Signal::SIGUSR2) {
-                    warn!("Failed to send heartbeat: {}", e);
+                    tracing::warn!("Failed to send heartbeat: {}", e);
                 }
             }
         }
@@ -95,7 +95,7 @@ impl SupervisorClient {
             let ppid = getppid();
             if ppid.as_raw() > 1 {
                 if let Err(e) = kill(ppid, Signal::SIGUSR1) {
-                    error!("Failed to signal ready to supervisor: {}", e);
+                    tracing::error!("Failed to signal ready to supervisor: {}", e);
                 }
             }
         }
@@ -103,7 +103,7 @@ impl SupervisorClient {
 
     /// Report a critical error to the supervisor
     pub fn report_critical_error(&self, message: &str) {
-        error!("Critical error reported to supervisor: {}", message);
+        tracing::error!("Critical error reported to supervisor: {}", message);
         // In a real implementation, this might write to a shared error log
         // or send a structured message to the supervisor
     }

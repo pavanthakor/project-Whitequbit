@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+
 
 use super::action::{Action, ActionId, ActionResult, ExecutionContext, ValidationError};
 use super::privileged_executor::{Capability, CapabilitySet};
@@ -225,7 +225,7 @@ impl Action for ServiceAction {
     }
 
     fn execute(&self, ctx: &ExecutionContext) -> Result<ActionResult, ActionError> {
-        info!(
+        tracing::info!(
             "Executing service action: {:?} on {}",
             self.operation, self.service_name
         );
@@ -375,7 +375,7 @@ impl Action for NoOpAction {
     }
 
     fn execute(&self, _ctx: &ExecutionContext) -> Result<ActionResult, ActionError> {
-        debug!("NoOp action: {}", self.message);
+        tracing::debug!("NoOp action: {}", self.message);
         Ok(ActionResult::no_change(&self.message))
     }
 

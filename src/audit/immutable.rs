@@ -38,7 +38,7 @@ use blake3::Hasher;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::instrument;
 
 // ============================================================================
 // Error Types
@@ -686,12 +686,12 @@ impl WriteAheadLog {
                 .map_err(|e| ImmutableAuditError::Serialization(e.to_string()))?;
 
             if !wal_entry.verify() {
-                warn!("WAL entry failed checksum, discarding");
+                tracing::warn!("WAL entry failed checksum, discarding");
                 continue;
             }
 
             let entry = wal_entry.to_entry()?;
-            info!("Recovered WAL entry: sequence {}", entry.sequence);
+            tracing::info!("Recovered WAL entry: sequence {}", entry.sequence);
             return Ok(Some(entry));
         }
 
@@ -832,7 +832,7 @@ impl ImmutableAuditLogger {
     /// Create a new immutable audit logger
     #[instrument(skip_all, fields(log_path = %config.log_path.display()))]
     pub fn new(config: ImmutableAuditConfig) -> ImmutableAuditResult<Self> {
-        info!("Initializing immutable audit logger");
+        tracing::info!("Initializing immutable audit logger");
 
         // Create parent directories
         if let Some(parent) = config.log_path.parent() {
@@ -858,7 +858,7 @@ impl ImmutableAuditLogger {
         if let Some(pending_entry) = wal.recover()? {
             // Check if this entry needs to be replayed
             if pending_entry.sequence == next_sequence {
-                info!("Replaying WAL entry {}", pending_entry.sequence);
+                tracing::info!("Replaying WAL entry {}", pending_entry.sequence);
                 // Will be written on first append
                 metrics.wal_recoveries += 1;
             }
@@ -867,16 +867,16 @@ impl ImmutableAuditLogger {
 
         // Optionally verify chain integrity
         if config.verify_on_startup && next_sequence > 1 {
-            info!("Verifying audit log integrity...");
+            tracing::info!("Verifying audit log integrity...");
             let result = Self::verify_chain(&config.log_path)?;
             if !result.valid {
-                error!("Audit log integrity check failed: {:?}", result.issue);
+                tracing::error!("Audit log integrity check failed: {:?}", result.issue);
                 return Err(ImmutableAuditError::ChainBroken {
                     sequence: result.first_invalid.unwrap_or(0),
                     message: result.issue.unwrap_or_else(|| "Unknown".to_string()),
                 });
             }
-            info!("Integrity check passed: {} entries verified", result.entries_checked);
+            tracing::info!("Integrity check passed: {} entries verified", result.entries_checked);
         }
 
         let state = LoggerState {
@@ -1049,7 +1049,7 @@ impl ImmutableAuditLogger {
             (metrics.avg_write_latency_us * (metrics.entries_written - 1) + latency)
                 / metrics.entries_written;
 
-        debug!("Appended entry {} in {}µs", entry.sequence, latency);
+        tracing::debug!("Appended entry {} in {}µs", entry.sequence, latency);
 
         // Check if checkpoint needed
         self.maybe_checkpoint()?;
@@ -1141,7 +1141,7 @@ impl ImmutableAuditLogger {
         let mut metrics = self.metrics.write().unwrap();
         metrics.checkpoints_created += 1;
 
-        info!("Created checkpoint at sequence {}", entry.sequence);
+        tracing::info!("Created checkpoint at sequence {}", entry.sequence);
 
         Ok(())
     }
