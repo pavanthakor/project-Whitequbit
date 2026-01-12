@@ -152,14 +152,14 @@ impl SandboxManager {
     #[cfg(target_os = "linux")]
     fn apply_seccomp(&self) -> Result<(), SecurityError> {
         use seccompiler::{
-            apply_filter_all_threads, BpfProgram, SeccompAction, SeccompFilter, SeccompRule,
+            apply_filter_all_threads, BpfProgram, SeccompAction, SeccompFilter,
             TargetArch,
         };
         use std::collections::BTreeMap;
         use std::convert::TryInto;
 
         // Build allowlist of syscalls
-        let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
+        let mut rules: BTreeMap<i64, Vec<seccompiler::SeccompRule>> = BTreeMap::new();
 
         // Basic I/O
         let allowed_syscalls = [
@@ -274,7 +274,16 @@ impl SandboxManager {
         ];
 
         for syscall in allowed_syscalls {
-            rules.insert(syscall, vec![SeccompRule::new(vec![]).unwrap()]);
+            // Insert with empty Vec<SeccompRule> to allow syscall unconditionally
+            // (no argument filtering). Do NOT use SeccompRule::new(vec![]) which
+            // returns EmptyRule error.
+            rules.insert(syscall, vec![]);
+        }
+
+        // Guard: if no rules were added, skip seccomp application
+        if rules.is_empty() {
+            tracing::warn!("No seccomp rules defined, skipping seccomp filter application");
+            return Ok(());
         }
 
         // Determine the target architecture for seccomp.
