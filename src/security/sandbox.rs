@@ -93,7 +93,8 @@ impl SandboxManager {
         // Check if landlock is supported
         let abi = ABI::V1;
 
-        let ruleset = Ruleset::new()
+        // Use Ruleset::default() instead of deprecated Ruleset::new()
+        let ruleset = Ruleset::default()
             .handle_access(AccessFs::from_all(abi))
             .map_err(|e| SecurityError::Sandbox(format!("Failed to create ruleset: {}", e)))?;
 
@@ -151,9 +152,11 @@ impl SandboxManager {
     #[cfg(target_os = "linux")]
     fn apply_seccomp(&self) -> Result<(), SecurityError> {
         use seccompiler::{
-            SeccompAction, SeccompFilter, SeccompRule,
+            apply_filter_all_threads, BpfProgram, SeccompAction, SeccompFilter, SeccompRule,
+            TargetArch,
         };
         use std::collections::BTreeMap;
+        use std::convert::TryInto;
 
         // Build allowlist of syscalls
         let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
@@ -274,23 +277,33 @@ impl SandboxManager {
             rules.insert(syscall, vec![SeccompRule::new(vec![]).unwrap()]);
         }
 
-        // Create the filter
+        // Determine the target architecture for seccomp.
+        // On Linux x86_64, this is TargetArch::x86_64.
+        #[cfg(target_arch = "x86_64")]
+        let target_arch = TargetArch::x86_64;
+        #[cfg(target_arch = "aarch64")]
+        let target_arch = TargetArch::aarch64;
+
+        // Create the filter with explicit architecture
         let filter = SeccompFilter::new(
             rules,
             SeccompAction::Errno(libc::EPERM as u32), // Default: deny with EPERM
             SeccompAction::Allow, // Matches: allow
-            std::env::consts::ARCH.try_into().unwrap(),
+            target_arch,
         )
         .map_err(|e| SecurityError::Sandbox(format!("Failed to create seccomp filter: {}", e)))?;
 
-        // Compile the filter to BPF bytecode and apply it.
-        // SeccompFilter can be converted directly to BpfProgram using try_into().
-        let bpf_prog: seccompiler::BpfProgram = filter
+        // Compile the filter to BPF bytecode.
+        // SeccompFilter implements TryInto<BpfProgram> with BackendError as the error type.
+        // We must handle BackendError explicitly, not seccompiler::Error.
+        let bpf_prog: BpfProgram = filter
             .try_into()
-            .map_err(|e: seccompiler::Error| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
+            .map_err(|e: seccompiler::BackendError| {
+                SecurityError::Sandbox(format!("Failed to compile seccomp filter: {:?}", e))
+            })?;
 
-        // Apply the compiled BPF program to this thread
-        seccompiler::apply_filter(&bpf_prog)
+        // Apply the compiled BPF program to all threads in this process
+        apply_filter_all_threads(&bpf_prog)
             .map_err(|e| SecurityError::Sandbox(format!("Failed to apply seccomp: {}", e)))?;
 
         tracing::info!("Seccomp filter applied ({} syscalls allowed)", allowed_syscalls.len());
