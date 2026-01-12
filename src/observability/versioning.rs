@@ -39,7 +39,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::instrument;
 
 // ============================================================================
 // Error Types
@@ -506,7 +506,7 @@ impl VersionStore {
         use std::io::{BufRead, BufReader};
 
         if !self.journal_path.exists() {
-            info!("No version journal found, starting fresh");
+            tracing::info!("No version journal found, starting fresh");
             return Ok(());
         }
 
@@ -533,7 +533,7 @@ impl VersionStore {
                     max_sequence = max_sequence.max(latest_sequence);
                 }
                 Err(e) => {
-                    warn!(?e, "Skipping malformed journal entry");
+                    tracing::warn!(?e, "Skipping malformed journal entry");
                 }
             }
         }
@@ -541,7 +541,7 @@ impl VersionStore {
         self.next_sequence.store(max_sequence + 1, Ordering::SeqCst);
         self.total_versions.store(count, Ordering::SeqCst);
 
-        info!(
+        tracing::info!(
             versions = count,
             latest_sequence = max_sequence,
             "Recovered version history"
@@ -597,7 +597,7 @@ impl VersionStore {
             let history = self.history.read().unwrap();
             if let Some(latest) = history.latest() {
                 if latest.content_hash == content_hash {
-                    debug!("Content unchanged, not creating new version");
+                    tracing::debug!("Content unchanged, not creating new version");
                     return Ok(latest.clone());
                 }
             }
@@ -628,7 +628,7 @@ impl VersionStore {
 
         self.total_versions.fetch_add(1, Ordering::SeqCst);
 
-        info!(
+        tracing::info!(
             sequence = version.sequence,
             hash = %version.version_hash.short(),
             change_type = %version.change_type,
@@ -760,7 +760,7 @@ impl VersionNotifier {
 
         for sub in subs.iter() {
             if let Err(e) = sub.on_version_change(event) {
-                warn!(
+                tracing::warn!(
                     subscriber = sub.name(),
                     error = %e,
                     "Subscriber notification failed"
@@ -865,7 +865,7 @@ impl VersionManager {
             let last = self.last_version_time.read().unwrap();
             if let Some(last_time) = *last {
                 if last_time.elapsed() < self.config.min_interval {
-                    debug!("Version rate limited, skipping");
+                    tracing::debug!("Version rate limited, skipping");
                     if let Some(current) = self.store.current() {
                         return Ok(current);
                     }
@@ -917,7 +917,7 @@ impl VersionManager {
             };
 
             if let Err(e) = self.notifier.notify(&event) {
-                warn!(?e, "Some subscribers failed notification");
+                tracing::warn!(?e, "Some subscribers failed notification");
             }
         }
 
@@ -1042,7 +1042,7 @@ impl Default for LoggingSubscriber {
 
 impl VersionSubscriber for LoggingSubscriber {
     fn on_version_change(&self, event: &VersionChangeEvent) -> VersioningResult<()> {
-        info!(
+        tracing::info!(
             sequence = event.version.sequence,
             hash = %event.version.version_hash.short(),
             change_type = %event.version.change_type,

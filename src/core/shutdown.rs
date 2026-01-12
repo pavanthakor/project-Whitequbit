@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::{watch, Notify};
-use tracing::{debug, info, warn};
+
 
 /// Shutdown phases
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,19 +90,19 @@ impl ShutdownCoordinator {
         let was_initiated = self.initiated.swap(true, Ordering::SeqCst);
 
         if !was_initiated {
-            info!("Shutdown initiated");
+            tracing::info!("Shutdown initiated");
             self.transition_phase(ShutdownPhase::StopAccepting);
             self.notify.notify_waiters();
             true
         } else {
-            debug!("Shutdown already initiated");
+            tracing::debug!("Shutdown already initiated");
             false
         }
     }
 
     /// Request immediate shutdown (skip draining)
     pub fn request_immediate(&self) {
-        warn!("Immediate shutdown requested");
+        tracing::warn!("Immediate shutdown requested");
         self.initiated.store(true, Ordering::SeqCst);
         self.transition_phase(ShutdownPhase::Immediate);
         self.notify.notify_waiters();
@@ -114,7 +114,7 @@ impl ShutdownCoordinator {
         let old = ShutdownPhase::try_from(old_phase).unwrap_or(ShutdownPhase::Running);
 
         if old != phase {
-            debug!(?old, new = ?phase, "Shutdown phase transition");
+            tracing::debug!(?old, new = ?phase, "Shutdown phase transition");
             let _ = self.phase_tx.send(phase);
         }
     }

@@ -39,7 +39,7 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{info, instrument, warn};
+use tracing::instrument;
 
 // ============================================================================
 // Error Types
@@ -1172,7 +1172,7 @@ impl SnapshotCollector {
     #[instrument(skip(self))]
     pub async fn collect(&mut self) -> SnapshotResult<SecuritySnapshot> {
         let start = Instant::now();
-        info!("Starting security snapshot collection");
+        tracing::info!("Starting security snapshot collection");
 
         let mut builder = SecuritySnapshot::builder();
 
@@ -1192,7 +1192,7 @@ impl SnapshotCollector {
                         builder = builder.ports(PortSummary::from_ports(ports));
                     }
                     Err(e) => {
-                        warn!(?e, "Failed to collect ports");
+                        tracing::warn!(?e, "Failed to collect ports");
                     }
                 }
             }
@@ -1206,7 +1206,7 @@ impl SnapshotCollector {
                         builder = builder.firewall(fw);
                     }
                     Err(e) => {
-                        warn!(?e, "Failed to collect firewall");
+                        tracing::warn!(?e, "Failed to collect firewall");
                     }
                 }
             }
@@ -1220,7 +1220,7 @@ impl SnapshotCollector {
                         builder = builder.services(ServicesSummary::from_services(services));
                     }
                     Err(e) => {
-                        warn!(?e, "Failed to collect services");
+                        tracing::warn!(?e, "Failed to collect services");
                     }
                 }
             }
@@ -1234,7 +1234,7 @@ impl SnapshotCollector {
                         builder = builder.auth_posture(auth);
                     }
                     Err(e) => {
-                        warn!(?e, "Failed to collect auth posture");
+                        tracing::warn!(?e, "Failed to collect auth posture");
                     }
                 }
             }
@@ -1246,7 +1246,7 @@ impl SnapshotCollector {
         // Update chain tracking
         self.last_snapshot_hash = Some(snapshot.security_version.clone());
 
-        info!(
+        tracing::info!(
             version = %snapshot.security_version,
             score = snapshot.security_score,
             duration_ms = duration.as_millis() as u64,

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use tokio::select;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, warn, Instrument};
+use tracing::Instrument;
 
 use crate::audit::AuditLogger;
 use crate::events::{Event, EventDispatcher, EventType, Signal};
@@ -47,7 +47,7 @@ impl EventLoop {
 
     /// Run the event loop
     pub async fn run(&mut self) -> Result<(), CoreError> {
-        info!("Starting event loop");
+        tracing::info!("Starting event loop");
 
         // Ensure we're in Ready state
         if self.state_machine.current() != AgentState::Ready {
@@ -67,7 +67,7 @@ impl EventLoop {
 
                 // Handle shutdown signal (highest priority)
                 _ = self.shutdown_coordinator.wait_for_shutdown() => {
-                    info!("Shutdown signal received from coordinator");
+                    tracing::info!("Shutdown signal received from coordinator");
                     break;
                 }
 
@@ -94,11 +94,11 @@ impl EventLoop {
                                 .instrument(tracing::debug_span!("handle_event", %event_id))
                                 .await
                             {
-                                error!(error = %e, %event_id, "Error handling event");
+                                tracing::error!(error = %e, %event_id, "Error handling event");
                             }
                         }
                         None => {
-                            debug!("Event dispatcher closed");
+                            tracing::debug!("Event dispatcher closed");
                             break;
                         }
                     }
@@ -121,22 +121,22 @@ impl EventLoop {
     async fn handle_signal(&self, signal: Signal) -> Result<bool, CoreError> {
         match signal {
             Signal::Terminate | Signal::Interrupt => {
-                info!(?signal, "Received termination signal");
+                tracing::info!(?signal, "Received termination signal");
                 self.shutdown_coordinator.initiate_shutdown();
                 Ok(true)
             }
             Signal::Hangup => {
-                info!("Received SIGHUP, config reload requested");
+                tracing::info!("Received SIGHUP, config reload requested");
                 // TODO: Implement config reload
                 Ok(false)
             }
             Signal::User1 => {
-                debug!("Received SIGUSR1");
+                tracing::debug!("Received SIGUSR1");
                 // Used for supervisor communication
                 Ok(false)
             }
             Signal::User2 => {
-                debug!("Received SIGUSR2");
+                tracing::debug!("Received SIGUSR2");
                 // Reserved for future use
                 Ok(false)
             }
@@ -146,11 +146,11 @@ impl EventLoop {
     /// Handle a single event
     async fn handle_event(&self, event: Event) -> Result<(), CoreError> {
         let event_type = event.event_type_enum().clone();
-        debug!(?event_type, "Handling event");
+        tracing::debug!(?event_type, "Handling event");
 
         // Log event received
         if let Err(e) = self.audit_logger.log_event_received(&event).await {
-            warn!(error = %e, "Failed to log event");
+            tracing::warn!(error = %e, "Failed to log event");
         }
 
         // Process based on event type
@@ -159,15 +159,15 @@ impl EventLoop {
                 self.handle_system_event(system_type).await?;
             }
             EventType::Firewall(firewall_type) => {
-                debug!(?firewall_type, "Firewall event");
+                tracing::debug!(?firewall_type, "Firewall event");
                 self.handle_action_event(&event).await?;
             }
             EventType::Service(service_type) => {
-                debug!(?service_type, "Service event");
+                tracing::debug!(?service_type, "Service event");
                 self.handle_action_event(&event).await?;
             }
             EventType::Custom(name) => {
-                debug!(name, "Custom event");
+                tracing::debug!(name, "Custom event");
             }
         }
 
@@ -183,21 +183,21 @@ impl EventLoop {
 
         match system_type {
             SystemEventType::Shutdown => {
-                info!("Shutdown event received");
+                tracing::info!("Shutdown event received");
                 self.shutdown_coordinator.initiate_shutdown();
             }
             SystemEventType::ConfigReload | SystemEventType::Reload => {
-                info!("Config reload event received");
+                tracing::info!("Config reload event received");
                 // TODO: Implement config reload
             }
             SystemEventType::Heartbeat => {
-                debug!("Heartbeat received");
+                tracing::debug!("Heartbeat received");
             }
             SystemEventType::Status => {
-                info!("Status check requested");
+                tracing::info!("Status check requested");
             }
             SystemEventType::HealthCheck => {
-                debug!("Health check received");
+                tracing::debug!("Health check received");
                 self.perform_health_check().await;
             }
         }
@@ -215,7 +215,7 @@ impl EventLoop {
             .log_action_prepared(&action_id.to_string(), &action_type, None)
             .await
         {
-            warn!(error = %e, "Failed to log action prepared");
+            tracing::warn!(error = %e, "Failed to log action prepared");
         }
 
         // Prepare journal entry
@@ -243,14 +243,14 @@ impl EventLoop {
                     .await
                     .map_err(|e| CoreError::Internal(format!("Journal commit error: {}", e)))?;
 
-                info!(%action_id, "Action completed successfully");
+                tracing::info!(%action_id, "Action completed successfully");
             }
             Err(e) => {
                 // Mark rollback needed on failure
-                warn!(%action_id, error = %e, "Action failed, initiating rollback");
+                tracing::warn!(%action_id, error = %e, "Action failed, initiating rollback");
 
                 if let Err(rollback_err) = self.journal.mark_rolled_back(entry_id).await {
-                    error!(
+                    tracing::error!(
                         %action_id,
                         error = %rollback_err,
                         "Failed to mark entry as rolled back"
@@ -273,16 +273,16 @@ impl EventLoop {
 
     /// Perform periodic health check
     async fn perform_health_check(&self) {
-        debug!("Performing health check");
+        tracing::debug!("Performing health check");
 
         // Check state machine
         let state = self.state_machine.current();
-        debug!(?state, "Current agent state");
+        tracing::debug!(?state, "Current agent state");
 
         // Check journal health
         let uncommitted = self.journal.get_uncommitted().await;
         if !uncommitted.is_empty() {
-            warn!(
+            tracing::warn!(
                 count = uncommitted.len(),
                 "Uncommitted journal entries detected"
             );
@@ -290,13 +290,13 @@ impl EventLoop {
 
         // Check event dispatcher
         if !self.event_dispatcher.is_accepting() {
-            warn!("Event dispatcher is not accepting events");
+            tracing::warn!("Event dispatcher is not accepting events");
         }
     }
 
     /// Graceful shutdown
     async fn shutdown(&mut self) -> Result<(), CoreError> {
-        info!("Beginning graceful shutdown");
+        tracing::info!("Beginning graceful shutdown");
 
         // Transition to draining state
         self.state_machine.transition_to(AgentState::Draining)?;
@@ -308,24 +308,24 @@ impl EventLoop {
         // Drain remaining events with timeout
         let remaining = self.event_dispatcher.drain(DRAIN_TIMEOUT).await;
         if !remaining.is_empty() {
-            warn!(count = remaining.len(), "Events dropped during shutdown");
+            tracing::warn!(count = remaining.len(), "Events dropped during shutdown");
         }
 
         // Flush journal
         if let Err(e) = self.journal.flush().await {
-            error!(error = %e, "Failed to flush journal");
+            tracing::error!(error = %e, "Failed to flush journal");
         }
 
         // Flush audit log
         if let Err(e) = self.audit_logger.flush().await {
-            error!(error = %e, "Failed to flush audit log");
+            tracing::error!(error = %e, "Failed to flush audit log");
         }
 
         // Transition to stopped
         self.state_machine.transition_to(AgentState::Stopped)?;
         self.shutdown_coordinator.mark_complete();
 
-        info!("Shutdown complete");
+        tracing::info!("Shutdown complete");
         Ok(())
     }
 }

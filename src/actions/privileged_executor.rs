@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 #[cfg(unix)]
 use tokio::time::timeout;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::instrument;
 
 use super::action::{Action, ActionResult, ExecutionContext, ValidationError};
 use super::ActionError;
@@ -207,7 +207,7 @@ impl PrivilegedExecutor {
         // Check if we have required capabilities
         if !required.is_subset(&self.available_caps) {
             let missing: Vec<_> = required.difference(&self.available_caps).collect();
-            warn!(?missing, "Insufficient capabilities for action");
+            tracing::warn!(?missing, "Insufficient capabilities for action");
 
             return match self.failure_policy {
                 PrivilegeFailurePolicy::Fail => Err(ActionError::InsufficientPrivilege(format!(
@@ -215,11 +215,11 @@ impl PrivilegedExecutor {
                     missing
                 ))),
                 PrivilegeFailurePolicy::Skip => {
-                    info!("Skipping action due to missing capabilities");
+                    tracing::info!("Skipping action due to missing capabilities");
                     Ok(ActionResult::skipped("Insufficient privileges"))
                 }
                 PrivilegeFailurePolicy::Defer => {
-                    info!("Deferring action for later retry");
+                    tracing::info!("Deferring action for later retry");
                     Ok(ActionResult::deferred("Awaiting privilege escalation"))
                 }
             };
@@ -254,7 +254,7 @@ impl PrivilegedExecutor {
         let (read_fd, write_fd) = pipe()
             .map_err(|e| ActionError::Sandbox(format!("Failed to create pipe: {}", e)))?;
 
-        debug!("Forking child for privileged action");
+        tracing::debug!("Forking child for privileged action");
 
         // Fork child process
         // SAFETY: fork() is safe here because we immediately handle both parent and
@@ -319,7 +319,7 @@ impl PrivilegedExecutor {
                     }
                     Err(_) => {
                         // Timeout - kill the child
-                        error!("Action timed out, killing child process");
+                        tracing::error!("Action timed out, killing child process");
                         let _ = nix::sys::signal::kill(child, nix::sys::signal::Signal::SIGKILL);
                         let _ = waitpid(child, None);
                         return Err(ActionError::Timeout(PRIVILEGED_EXEC_TIMEOUT));
@@ -332,10 +332,10 @@ impl PrivilegedExecutor {
                         // Normal exit - use the result
                     }
                     Ok(WaitStatus::Exited(_, code)) => {
-                        warn!(exit_code = code, "Child exited with error");
+                        tracing::warn!(exit_code = code, "Child exited with error");
                     }
                     Ok(WaitStatus::Signaled(_, sig, _)) => {
-                        error!(?sig, "Child killed by signal");
+                        tracing::error!(?sig, "Child killed by signal");
                         return Err(ActionError::Execution(format!("Child killed by {:?}", sig)));
                     }
                     _ => {}

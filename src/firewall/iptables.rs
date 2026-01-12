@@ -38,7 +38,7 @@ use std::time::{Duration, SystemTime};
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info, instrument, warn};
+use tracing::instrument;
 
 use super::{
     BackendCapabilities, FirewallBackend, FirewallError, FirewallResult, FirewallRuleSpec,
@@ -330,7 +330,7 @@ impl IptablesBackend {
     /// - Uses -w for locking
     #[instrument(skip(args), fields(cmd = %binary, args_count = args.len()))]
     async fn run_command(binary: &str, args: &[&str]) -> FirewallResult<Output> {
-        debug!("Executing: {} {:?}", binary, args);
+        tracing::debug!("Executing: {} {:?}", binary, args);
 
         // SECURITY: Validate binary path is one of our known binaries
         if binary != IPTABLES_PATH && binary != IP6TABLES_PATH {
@@ -374,12 +374,12 @@ impl IptablesBackend {
 
             // Rule already exists is not an error for idempotent adds
             if stderr.contains("already exists") {
-                debug!("Rule already exists (idempotent)");
+                tracing::debug!("Rule already exists (idempotent)");
                 // We'll handle this in the caller
             }
 
             // Log but don't always error - caller decides
-            debug!(
+            tracing::debug!(
                 "Command output - status: {}, stdout: {}, stderr: {}",
                 output.status, stdout, stderr
             );
@@ -391,7 +391,7 @@ impl IptablesBackend {
     /// Run an iptables command, choosing v4 or v6 based on IP
     async fn run_for_ip(&self, ip: &ValidatedIp, args: &[&str]) -> FirewallResult<Output> {
         if self.dry_run {
-            info!("[DRY-RUN] Would execute: iptables {:?}", args);
+            tracing::info!("[DRY-RUN] Would execute: iptables {:?}", args);
             return Ok(Output {
                 status: std::process::ExitStatus::default(),
                 stdout: Vec::new(),
@@ -416,7 +416,7 @@ impl IptablesBackend {
     /// Refresh the in-memory cache of our rules
     #[instrument(skip(self))]
     async fn refresh_cache(&self) -> FirewallResult<()> {
-        debug!("Refreshing rule cache");
+        tracing::debug!("Refreshing rule cache");
 
         let mut new_cache = HashMap::new();
 
@@ -425,7 +425,7 @@ impl IptablesBackend {
             if let Some(ref meta) = rule.metadata {
                 // We'd need the original spec to fully populate this
                 // For now, store minimal info
-                debug!("Found our rule: {:?}", meta.rule_id);
+                tracing::debug!("Found our rule: {:?}", meta.rule_id);
             }
         }
 
@@ -433,7 +433,7 @@ impl IptablesBackend {
         if self.support_ipv6 {
             for rule in self.list_our_rules_raw(true).await? {
                 if let Some(ref meta) = rule.metadata {
-                    debug!("Found our IPv6 rule: {:?}", meta.rule_id);
+                    tracing::debug!("Found our IPv6 rule: {:?}", meta.rule_id);
                 }
             }
         }
@@ -753,7 +753,7 @@ impl IptablesBackend {
         let binary = if is_ipv6 { IP6TABLES_PATH } else { IPTABLES_PATH };
 
         if self.dry_run {
-            info!("[DRY-RUN] Would delete rule: {}", rule_line);
+            tracing::info!("[DRY-RUN] Would delete rule: {}", rule_line);
             return Ok(());
         }
 
@@ -765,7 +765,7 @@ impl IptablesBackend {
             if stderr.contains("No chain/target/match by that name")
                 || stderr.contains("Bad rule")
             {
-                debug!("Rule already deleted (idempotent)");
+                tracing::debug!("Rule already deleted (idempotent)");
                 return Ok(());
             }
             return Err(FirewallError::BackendError(format!(
@@ -813,11 +813,11 @@ impl FirewallBackend for IptablesBackend {
         // Validate the rule first
         rule.validate()?;
 
-        info!("Adding firewall rule: {:?}", rule.id);
+        tracing::info!("Adding firewall rule: {:?}", rule.id);
 
         // Check for duplicate (idempotency)
         if self.rule_exists_for_spec(rule).await? {
-            info!("Rule {} already exists (idempotent)", rule.id);
+            tracing::info!("Rule {} already exists (idempotent)", rule.id);
             return Ok(OperationResult::already_exists(rule.id.clone()));
         }
 
@@ -844,7 +844,7 @@ impl FirewallBackend for IptablesBackend {
         let binary = if is_ipv6 { IP6TABLES_PATH } else { IPTABLES_PATH };
 
         if self.dry_run {
-            info!("[DRY-RUN] Would add rule: {} {:?}", binary, args);
+            tracing::info!("[DRY-RUN] Would add rule: {} {:?}", binary, args);
             let mut cache = self.rule_cache.write();
             cache.insert(
                 rule.id.clone(),
@@ -872,7 +872,7 @@ impl FirewallBackend for IptablesBackend {
             // Check for "already exists" which shouldn't happen given our check above
             // but handle it for robustness
             if stderr.contains("already exists") {
-                warn!("Race condition: rule {} was added by someone else", rule.id);
+                tracing::warn!("Race condition: rule {} was added by someone else", rule.id);
                 return Ok(OperationResult::already_exists(rule.id.clone()));
             }
 
@@ -900,13 +900,13 @@ impl FirewallBackend for IptablesBackend {
             );
         }
 
-        info!("Rule {} added successfully", rule.id);
+        tracing::info!("Rule {} added successfully", rule.id);
         Ok(OperationResult::created(rule.id.clone()))
     }
 
     #[instrument(skip(self), fields(rule_id = %rule_id))]
     async fn remove_rule(&self, rule_id: &RuleId) -> FirewallResult<OperationResult> {
-        info!("Removing firewall rule: {:?}", rule_id);
+        tracing::info!("Removing firewall rule: {:?}", rule_id);
 
         // Find the rule
         let found = self.find_rule_for_deletion(rule_id).await?;
@@ -925,7 +925,7 @@ impl FirewallBackend for IptablesBackend {
                 }
                 drop(cache);
 
-                info!("Rule {} not found (idempotent)", rule_id);
+                tracing::info!("Rule {} not found (idempotent)", rule_id);
                 return Ok(OperationResult::not_found(rule_id.clone()));
             }
         };
@@ -952,7 +952,7 @@ impl FirewallBackend for IptablesBackend {
             cache.remove(rule_id);
         }
 
-        info!("Rule {} removed successfully", rule_id);
+        tracing::info!("Rule {} removed successfully", rule_id);
 
         match previous_state {
             Some(state) => Ok(OperationResult::removed(rule_id.clone(), state)),
@@ -981,35 +981,46 @@ impl FirewallBackend for IptablesBackend {
     }
 
     async fn get_rule(&self, rule_id: &RuleId) -> FirewallResult<Option<RuleState>> {
-        let cache = self.rule_cache.read();
-        Ok(cache.get(rule_id).map(|c| c.state.clone()))
+        // Scope the lock to ensure it's dropped before any potential await points
+        let result = {
+            let cache = self.rule_cache.read();
+            cache.get(rule_id).map(|c| c.state.clone())
+        };
+        Ok(result)
     }
 
     async fn list_rules(&self) -> FirewallResult<Vec<RuleState>> {
-        let cache = self.rule_cache.read();
-        Ok(cache.values().map(|c| c.state.clone()).collect())
+        // Scope the lock to ensure it's dropped before any potential await points
+        let result = {
+            let cache = self.rule_cache.read();
+            cache.values().map(|c| c.state.clone()).collect()
+        };
+        Ok(result)
     }
 
     async fn find_rules_for_ip(&self, ip: &ValidatedIp) -> FirewallResult<Vec<RuleState>> {
-        let cache = self.rule_cache.read();
         let ip_str = ip.to_string();
-
-        Ok(cache
-            .values()
-            .filter(|c| {
-                if let Some(ref source) = c.spec.source {
-                    source.to_string().contains(&ip_str)
-                } else {
-                    false
-                }
-            })
-            .map(|c| c.state.clone())
-            .collect())
+        // Scope the lock to ensure it's dropped before any potential await points
+        let result = {
+            let cache = self.rule_cache.read();
+            cache
+                .values()
+                .filter(|c| {
+                    if let Some(ref source) = c.spec.source {
+                        source.to_string().contains(&ip_str)
+                    } else {
+                        false
+                    }
+                })
+                .map(|c| c.state.clone())
+                .collect()
+        };
+        Ok(result)
     }
 
     #[instrument(skip(self))]
     async fn flush_all(&self) -> FirewallResult<Vec<OperationResult>> {
-        warn!("Flushing all agent-managed rules");
+        tracing::warn!("Flushing all agent-managed rules");
 
         let mut results = Vec::new();
 
@@ -1024,19 +1035,23 @@ impl FirewallBackend for IptablesBackend {
             match self.remove_rule(&rule_id).await {
                 Ok(result) => results.push(result),
                 Err(e) => {
-                    error!("Failed to remove rule {} during flush: {}", rule_id, e);
+                    tracing::error!("Failed to remove rule {} during flush: {}", rule_id, e);
                     // Continue with other rules - partial flush is better than none
                 }
             }
         }
 
-        info!("Flushed {} rules", results.len());
+        tracing::info!("Flushed {} rules", results.len());
         Ok(results)
     }
 
     async fn rule_count(&self) -> FirewallResult<usize> {
-        let cache = self.rule_cache.read();
-        Ok(cache.len())
+        // Scope the lock to ensure it's dropped before any potential await points
+        let count = {
+            let cache = self.rule_cache.read();
+            cache.len()
+        };
+        Ok(count)
     }
 }
 

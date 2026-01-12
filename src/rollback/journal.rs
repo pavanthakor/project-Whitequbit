@@ -12,7 +12,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::RwLock;
-use tracing::{debug, info, warn};
+
 
 use crate::actions::ActionId;
 
@@ -204,7 +204,7 @@ impl Journal {
     /// Load entries from disk
     fn load(&self) -> Result<(), RollbackError> {
         if !self.path.exists() {
-            info!("No existing journal at {}", self.path.display());
+            tracing::info!("No existing journal at {}", self.path.display());
             return Ok(());
         }
 
@@ -225,7 +225,7 @@ impl Journal {
             match serde_json::from_str::<JournalEntry>(&line) {
                 Ok(entry) => {
                     if !entry.verify() {
-                        warn!(
+                        tracing::warn!(
                             "Journal entry {} failed integrity check at line {}",
                             entry.id, line_num
                         );
@@ -236,7 +236,7 @@ impl Journal {
                     entries.insert(entry.id, entry);
                 }
                 Err(e) => {
-                    warn!("Failed to parse journal entry at line {}: {}", line_num, e);
+                    tracing::warn!("Failed to parse journal entry at line {}: {}", line_num, e);
                 }
             }
         }
@@ -248,7 +248,7 @@ impl Journal {
         let entries_clone = entries.clone();
         *self.entries.write().unwrap() = entries;
 
-        info!("Loaded {} journal entries", entries_clone.len());
+        tracing::info!("Loaded {} journal entries", entries_clone.len());
         Ok(())
     }
 
@@ -276,7 +276,7 @@ impl Journal {
         // Then add to memory
         self.entries.write().unwrap().insert(entry_id, entry);
 
-        debug!("Prepared journal entry {}", entry_id);
+        tracing::debug!("Prepared journal entry {}", entry_id);
         Ok(entry_id)
     }
 
@@ -293,7 +293,7 @@ impl Journal {
         // Write update to disk
         self.append_entry(entry).await?;
 
-        debug!("Committed journal entry {}", entry_id);
+        tracing::debug!("Committed journal entry {}", entry_id);
         Ok(())
     }
 
@@ -309,7 +309,7 @@ impl Journal {
 
         self.append_entry(entry).await?;
 
-        debug!("Marked journal entry {} as rolled back", entry_id);
+        tracing::debug!("Marked journal entry {} as rolled back", entry_id);
         Ok(())
     }
 
@@ -325,7 +325,7 @@ impl Journal {
 
         self.append_entry(entry).await?;
 
-        warn!("Marked journal entry {} as rollback failed", entry_id);
+        tracing::warn!("Marked journal entry {} as rollback failed", entry_id);
         Ok(())
     }
 
@@ -420,7 +420,7 @@ impl Journal {
             self.rewrite_journal(&entries).await?;
         }
 
-        info!("Compacted journal, removed {} entries", removed_count);
+        tracing::info!("Compacted journal, removed {} entries", removed_count);
         Ok(removed_count)
     }
 

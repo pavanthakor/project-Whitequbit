@@ -7,7 +7,6 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use tokio::sync::Mutex;
-use tracing::debug;
 
 use super::logger::AuditEntry;
 use super::AuditError;
@@ -53,7 +52,7 @@ impl FileSink {
         // Ensure durability
         file.sync_all()?;
 
-        debug!("Wrote audit entry {} to {}", entry.sequence, self.path.display());
+        tracing::debug!("Wrote audit entry {} to {}", entry.sequence, self.path.display());
         Ok(())
     }
 

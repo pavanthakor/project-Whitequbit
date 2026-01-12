@@ -21,7 +21,7 @@ use std::sync::{Arc, RwLock};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{error, info, warn};
+
 
 use crate::core::failure::{
     FailureCategory, FailureRecord, FailureSeverity, KillSwitchState,
@@ -297,16 +297,16 @@ impl AlertManager {
         // Log based on priority
         match alert.priority {
             AlertPriority::Emergency => {
-                error!("EMERGENCY ALERT: {} - {}", alert.title, alert.message);
+                tracing::error!("EMERGENCY ALERT: {} - {}", alert.title, alert.message);
             }
             AlertPriority::Critical => {
-                error!("CRITICAL ALERT: {} - {}", alert.title, alert.message);
+                tracing::error!("CRITICAL ALERT: {} - {}", alert.title, alert.message);
             }
             AlertPriority::Warning => {
-                warn!("ALERT: {} - {}", alert.title, alert.message);
+                tracing::warn!("ALERT: {} - {}", alert.title, alert.message);
             }
             AlertPriority::Info => {
-                info!("ALERT: {} - {}", alert.title, alert.message);
+                tracing::info!("ALERT: {} - {}", alert.title, alert.message);
             }
         }
 

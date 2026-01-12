@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tracing::{error, info, warn};
+
 
 use super::checkpoint::CheckpointManager;
 use super::compensator::Compensator;
@@ -107,18 +107,18 @@ impl RecoveryManager {
 
     /// Perform crash recovery
     pub async fn recover(&self) -> Result<RecoveryResult, RollbackError> {
-        info!("Starting crash recovery");
+        tracing::info!("Starting crash recovery");
 
         // Get uncommitted entries
         let uncommitted = self.journal.get_uncommitted().await;
 
         if uncommitted.is_empty() {
-            info!("No uncommitted entries found, no recovery needed");
+            tracing::info!("No uncommitted entries found, no recovery needed");
             return Ok(RecoveryResult::success(0));
         }
 
         let total = uncommitted.len();
-        warn!("Found {} uncommitted entries, initiating rollback", total);
+        tracing::warn!("Found {} uncommitted entries, initiating rollback", total);
 
         // Execute compensations
         let results = self.compensator.compensate_all(uncommitted).await;
@@ -131,13 +131,13 @@ impl RecoveryManager {
             if result.success {
                 // Mark as rolled back in journal
                 if let Err(e) = self.journal.mark_rolled_back(result.entry_id).await {
-                    warn!("Failed to mark entry {} as rolled back: {}", result.entry_id, e);
+                    tracing::warn!("Failed to mark entry {} as rolled back: {}", result.entry_id, e);
                 }
                 recovered += 1;
             } else {
                 // Mark as rollback failed
                 if let Err(e) = self.journal.mark_rollback_failed(result.entry_id).await {
-                    warn!("Failed to mark entry {} as rollback failed: {}", result.entry_id, e);
+                    tracing::warn!("Failed to mark entry {} as rollback failed: {}", result.entry_id, e);
                 }
 
                 let detail = format!(
@@ -152,13 +152,13 @@ impl RecoveryManager {
         let failed = failed_details.len();
 
         if failed > 0 {
-            error!(
+            tracing::error!(
                 "Recovery completed with {} failures requiring intervention",
                 failed
             );
             Ok(RecoveryResult::partial(recovered, failed, failed_details))
         } else {
-            info!("Recovery completed successfully: {} entries recovered", recovered);
+            tracing::info!("Recovery completed successfully: {} entries recovered", recovered);
             Ok(RecoveryResult::success(recovered))
         }
     }
@@ -168,7 +168,7 @@ impl RecoveryManager {
         let checkpoint_dir = match &self.checkpoint_dir {
             Some(dir) => dir,
             None => {
-                info!("No checkpoint directory configured");
+                tracing::info!("No checkpoint directory configured");
                 return Ok(None);
             }
         };
@@ -177,15 +177,15 @@ impl RecoveryManager {
         
         match checkpoint_manager?.latest_checkpoint().await {
             Ok(Some(path)) => {
-                info!("Found checkpoint at {}", path.display());
+                tracing::info!("Found checkpoint at {}", path.display());
                 Ok(Some(path))
             }
             Ok(None) => {
-                info!("No checkpoint found");
+                tracing::info!("No checkpoint found");
                 Ok(None)
             }
             Err(e) => {
-                warn!("Error finding checkpoint: {}", e);
+                tracing::warn!("Error finding checkpoint: {}", e);
                 Err(e)
             }
         }
@@ -193,11 +193,11 @@ impl RecoveryManager {
 
     /// Full recovery procedure with checkpoints
     pub async fn full_recovery(&self) -> Result<RecoveryResult, RollbackError> {
-        info!("Starting full recovery procedure");
+        tracing::info!("Starting full recovery procedure");
 
         // First try to restore from checkpoint
         if let Some(checkpoint_path) = self.restore_checkpoint().await? {
-            info!("Restored state from checkpoint: {}", checkpoint_path.display());
+            tracing::info!("Restored state from checkpoint: {}", checkpoint_path.display());
         }
 
         // Then recover any uncommitted entries

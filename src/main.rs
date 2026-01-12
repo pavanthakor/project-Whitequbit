@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use tracing::{error, info, warn, Instrument};
+use tracing::Instrument;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use whitequbit_agent::{
@@ -58,7 +58,7 @@ async fn main() -> ExitCode {
     init_early_logging();
 
     // Log startup info
-    info!(
+    tracing::info!(
         version = env!("CARGO_PKG_VERSION"),
         pid = std::process::id(),
         "Starting whitequbit-agent"
@@ -66,11 +66,11 @@ async fn main() -> ExitCode {
 
     match run_agent().await {
         Ok(()) => {
-            info!("Agent shutdown complete");
+            tracing::info!("Agent shutdown complete");
             ExitCode::SUCCESS
         }
         Err(e) => {
-            error!(error = %e, "Agent failed");
+            tracing::error!(error = %e, "Agent failed");
             ExitCode::FAILURE
         }
     }
@@ -95,7 +95,7 @@ async fn run_agent() -> Result<()> {
     let shutdown_coordinator = Arc::new(ShutdownCoordinator::new());
 
     // Phase 4: Open privileged resources
-    info!("Opening privileged resources");
+    tracing::info!("Opening privileged resources");
     let privileged_resources = open_privileged_resources(&config).await?;
 
     // Phase 5: Crash recovery - check WAL for incomplete actions
@@ -105,7 +105,7 @@ async fn run_agent() -> Result<()> {
     let recovery_manager = RecoveryManager::new(journal.clone());
     let recovery_result = recovery_manager.recover().await?;
     if recovery_result.entries_recovered > 0 {
-        warn!(
+        tracing::warn!(
             entries = recovery_result.entries_recovered,
             "Recovered incomplete actions from previous crash"
         );
@@ -120,7 +120,7 @@ async fn run_agent() -> Result<()> {
     #[cfg(unix)]
     if config.security.drop_privileges {
         use whitequbit_agent::security::PrivilegeManager;
-        info!("Dropping privileges");
+        tracing::info!("Dropping privileges");
         let privilege_manager = PrivilegeManager::new(&config.security)?;
         privilege_manager.drop_privileges()?;
     }
@@ -129,7 +129,7 @@ async fn run_agent() -> Result<()> {
     #[cfg(target_os = "linux")]
     if config.security.apply_sandbox {
         use whitequbit_agent::security::SandboxManager;
-        info!("Applying sandbox restrictions");
+        tracing::info!("Applying sandbox restrictions");
         let sandbox_manager = SandboxManager::new(&config.security)?;
         sandbox_manager.apply_sandbox()?;
     }
@@ -143,7 +143,7 @@ async fn run_agent() -> Result<()> {
 
     // Phase 11: Transition to ready state
     state_machine.transition_to(AgentState::Ready)?;
-    info!("Agent ready, entering event loop");
+    tracing::info!("Agent ready, entering event loop");
 
     // Signal readiness to supervisor
     signal_ready_to_supervisor()?;
@@ -165,12 +165,12 @@ async fn run_agent() -> Result<()> {
         .await;
 
     // Phase 13: Graceful shutdown
-    info!("Initiating graceful shutdown");
+    tracing::info!("Initiating graceful shutdown");
     shutdown_coordinator.initiate_shutdown();
 
     // Log shutdown
     if let Err(e) = audit_logger.log_shutdown("graceful").await {
-        warn!(error = %e, "Failed to log shutdown");
+        tracing::warn!(error = %e, "Failed to log shutdown");
     }
 
     // Clean up signal handler
@@ -238,7 +238,7 @@ fn init_configured_logging(config: &AgentConfig) {
     // Note: In production, you would use tracing-appender for file output
     // and proper log rotation. The initial subscriber cannot be replaced,
     // but we log this for observability.
-    info!(
+    tracing::info!(
         level = %config.logging.level,
         format = %config.logging.format,
         file = %config.logging.file_path.display(),
@@ -261,13 +261,13 @@ pub struct PrivilegedResources {
 async fn open_privileged_resources(
     config: &AgentConfig,
 ) -> Result<PrivilegedResources> {
-    use tracing::debug;
+    
 
     // Create WAL directory if needed
     if let Some(parent) = config.wal_path.parent() {
         if !parent.as_os_str().is_empty() {
             tokio::fs::create_dir_all(parent).await?;
-            debug!(path = %parent.display(), "Created WAL directory");
+            tracing::debug!(path = %parent.display(), "Created WAL directory");
         }
     }
 
@@ -278,7 +278,7 @@ async fn open_privileged_resources(
         .create(true)
         .open(&config.wal_path)
         .await?;
-    debug!(path = %config.wal_path.display(), "Opened WAL file");
+    tracing::debug!(path = %config.wal_path.display(), "Opened WAL file");
 
     // Write PID file
     if let Some(parent) = config.pid_path.parent() {
@@ -288,7 +288,7 @@ async fn open_privileged_resources(
     }
     let pid = std::process::id();
     tokio::fs::write(&config.pid_path, pid.to_string()).await?;
-    info!(pid = pid, path = %config.pid_path.display(), "Wrote PID file");
+    tracing::info!(pid = pid, path = %config.pid_path.display(), "Wrote PID file");
 
     #[cfg(unix)]
     {
@@ -307,7 +307,7 @@ async fn open_privileged_resources(
 
         // Bind to IPC socket
         let ipc_listener = UnixListener::bind(&config.socket_path)?;
-        debug!(path = %config.socket_path.display(), "Bound IPC socket");
+        tracing::debug!(path = %config.socket_path.display(), "Bound IPC socket");
 
         // Set socket permissions (0660)
         let perms = std::fs::Permissions::from_mode(0o660);
@@ -326,7 +326,7 @@ async fn open_privileged_resources(
 /// Clean up PID file on shutdown
 async fn cleanup_pid_file(config: &AgentConfig) {
     if let Err(e) = tokio::fs::remove_file(&config.pid_path).await {
-        warn!(error = %e, path = %config.pid_path.display(), "Failed to remove PID file");
+        tracing::warn!(error = %e, path = %config.pid_path.display(), "Failed to remove PID file");
     }
 }
 

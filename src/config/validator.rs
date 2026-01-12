@@ -2,7 +2,6 @@
 //!
 //! Validates configuration values and reports errors.
 
-use tracing::warn;
 
 use super::{AgentConfig, ConfigError};
 
@@ -27,7 +26,7 @@ impl ConfigValidator {
         // WAL path parent must exist or be creatable
         if let Some(parent) = config.wal_path.parent() {
             if !parent.as_os_str().is_empty() && !parent.exists() {
-                warn!("WAL directory {} does not exist, will be created", parent.display());
+                tracing::warn!("WAL directory {} does not exist, will be created", parent.display());
             }
         }
 
@@ -47,13 +46,13 @@ impl ConfigValidator {
 
         // Validate UID range
         if sec.target_uid == 0 {
-            warn!("Running as root (uid=0) is not recommended");
+            tracing::warn!("Running as root (uid=0) is not recommended");
         }
 
         // Validate sandbox config
         if sec.apply_sandbox {
             if sec.sandbox.readwrite_paths.is_empty() {
-                warn!("No read-write paths configured for sandbox");
+                tracing::warn!("No read-write paths configured for sandbox");
             }
         }
 
@@ -119,7 +118,7 @@ impl ConfigValidator {
         }
 
         if events.max_queue_size > 100000 {
-            warn!("max_queue_size is very large ({}), may cause memory issues", events.max_queue_size);
+            tracing::warn!("max_queue_size is very large ({}), may cause memory issues", events.max_queue_size);
         }
 
         if events.rate_limit == 0 {
@@ -129,7 +128,7 @@ impl ConfigValidator {
         }
 
         if events.max_payload_size > 10 * 1024 * 1024 {
-            warn!("max_payload_size is very large ({}), may cause memory issues", events.max_payload_size);
+            tracing::warn!("max_payload_size is very large ({}), may cause memory issues", events.max_payload_size);
         }
 
         Ok(())
@@ -185,7 +184,7 @@ impl ConfigValidator {
         }
 
         if rollback.max_retries == 0 {
-            warn!("max_retries is 0, compensation actions will not be retried");
+            tracing::warn!("max_retries is 0, compensation actions will not be retried");
         }
 
         Ok(())

@@ -5,7 +5,7 @@
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use tracing::{debug, error, info, warn};
+
 
 use super::logger::AuditEntry;
 use super::AuditError;
@@ -52,7 +52,7 @@ impl IntegrityVerifier {
     /// Verify the integrity of an audit log file
     pub fn verify_file(path: impl AsRef<Path>) -> Result<VerificationResult, AuditError> {
         let path = path.as_ref();
-        info!("Verifying integrity of {}", path.display());
+        tracing::info!("Verifying integrity of {}", path.display());
 
         if !path.exists() {
             return Ok(VerificationResult::pass(0));
@@ -78,7 +78,7 @@ impl IntegrityVerifier {
 
             // Check sequence number
             if entry.sequence != expected_sequence {
-                error!(
+                tracing::error!(
                     "Sequence mismatch at entry {}: expected {}, got {}",
                     entries_checked, expected_sequence, entry.sequence
                 );
@@ -94,7 +94,7 @@ impl IntegrityVerifier {
 
             // Check previous hash chain
             if entry.previous_hash != expected_previous_hash {
-                error!(
+                tracing::error!(
                     "Hash chain broken at entry {}: expected {}, got {}",
                     entry.sequence, expected_previous_hash, entry.previous_hash
                 );
@@ -107,7 +107,7 @@ impl IntegrityVerifier {
 
             // Verify entry's own hash
             if !entry.verify() {
-                error!("Entry {} has invalid hash", entry.sequence);
+                tracing::error!("Entry {} has invalid hash", entry.sequence);
                 return Ok(VerificationResult::fail(
                     entries_checked,
                     entry.sequence,
@@ -119,10 +119,10 @@ impl IntegrityVerifier {
             expected_sequence += 1;
             expected_previous_hash = entry.hash.clone();
 
-            debug!("Entry {} verified", entry.sequence);
+            tracing::debug!("Entry {} verified", entry.sequence);
         }
 
-        info!(
+        tracing::info!(
             "Integrity verification passed: {} entries checked",
             entries_checked
         );
@@ -154,7 +154,7 @@ impl IntegrityVerifier {
 
             if entry.sequence > expected_sequence {
                 gaps.push((expected_sequence, entry.sequence - 1));
-                warn!(
+                tracing::warn!(
                     "Gap detected: entries {} to {} missing",
                     expected_sequence,
                     entry.sequence - 1

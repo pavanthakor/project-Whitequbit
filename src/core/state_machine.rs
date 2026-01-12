@@ -5,7 +5,7 @@
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use tracing::{debug, info};
+
 
 use super::CoreError;
 
@@ -70,7 +70,7 @@ impl StateMachine {
         }
 
         self.state.store(new_state as u8, Ordering::SeqCst);
-        info!("State transition: {:?} -> {:?}", current, new_state);
+        tracing::info!("State transition: {:?} -> {:?}", current, new_state);
 
         Ok(())
     }
@@ -106,7 +106,7 @@ impl StateMachine {
     /// Begin shutdown sequence
     pub fn begin_shutdown(&self) -> Result<(), CoreError> {
         let current = self.current();
-        debug!("Beginning shutdown from state {:?}", current);
+        tracing::debug!("Beginning shutdown from state {:?}", current);
 
         match current {
             AgentState::Ready => self.transition_to(AgentState::Draining),

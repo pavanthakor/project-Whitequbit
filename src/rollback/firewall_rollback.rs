@@ -20,7 +20,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::instrument;
 
 use crate::actions::ActionId;
 use crate::firewall::{FirewallBackend, FirewallError, FirewallRuleSpec, RuleId};
@@ -932,7 +932,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
     /// Recover state from journal
     #[instrument(skip(self))]
     pub fn recover(&self) -> RollbackEngineResult<RecoveryStats> {
-        info!("Recovering rollback state from journal");
+        tracing::info!("Recovering rollback state from journal");
         let mut stats = RecoveryStats::default();
 
         let records = self.journal.load()?;
@@ -965,7 +965,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
             }
         }
 
-        info!(?stats, "Recovery complete");
+        tracing::info!(?stats, "Recovery complete");
         Ok(stats)
     }
 
@@ -997,7 +997,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
         let mut registry = self.registry.write().unwrap();
         registry.register(record)?;
 
-        info!(%rule_id, "Registered rule for rollback tracking");
+        tracing::info!(%rule_id, "Registered rule for rollback tracking");
         Ok(())
     }
 
@@ -1005,7 +1005,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
     #[instrument(skip(self))]
     pub async fn execute_rollback(&self, scope: RollbackScope) -> RollbackEngineResult<RollbackResult> {
         let rollback_id = RollbackId::generate();
-        info!(%rollback_id, ?scope, "Starting rollback");
+        tracing::info!(%rollback_id, ?scope, "Starting rollback");
 
         // Notify coordinator that rollback is starting
         self.coordinator.begin_rollback();
@@ -1027,7 +1027,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
         let rules = self.resolve_scope(&scope)?;
 
         if rules.is_empty() {
-            info!(%rollback_id, "No rules to rollback");
+            tracing::info!(%rollback_id, "No rules to rollback");
             return Ok(RollbackResult::empty(rollback_id, scope));
         }
 
@@ -1057,7 +1057,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
                     results.push(result);
                 }
                 Err(e) => {
-                    warn!(rule_id = %record.rule_id, error = %e, "Rollback failed");
+                    tracing::warn!(rule_id = %record.rule_id, error = %e, "Rollback failed");
                     failed_rules.push(record.rule_id.clone());
                     results.push(RuleRollbackResult::failure(record.rule_id.clone(), e.to_string()));
                 }
@@ -1071,7 +1071,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
         let succeeded = results.iter().filter(|r| r.success).count();
         let failed = failed_rules.len();
 
-        info!(
+        tracing::info!(
             %rollback_id,
             total = rules.len(),
             succeeded,
@@ -1152,7 +1152,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
         match self.coordinator.try_acquire_rollback_removal(rule_id) {
             Ok(()) => {}
             Err(CoordinationError::TtlInProgress) => {
-                debug!(%rule_id, "TTL already removing rule, skipping");
+                tracing::debug!(%rule_id, "TTL already removing rule, skipping");
                 return Ok(RuleRollbackResult::skipped(rule_id.clone(), "TTL in progress"));
             }
             Err(CoordinationError::AlreadyRemoved) => {
@@ -1183,7 +1183,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
                 self.update_state(rule_id, RuleRecordState::RolledBack)?;
                 self.journal.log_rule_removed(rule_id.clone(), RemovalReason::RolledBack)?;
                 self.coordinator.complete_removal(rule_id);
-                info!(%rule_id, "Rule rolled back successfully");
+                tracing::info!(%rule_id, "Rule rolled back successfully");
                 Ok(RuleRollbackResult::success(rule_id.clone()))
             }
             Err(FirewallError::RuleNotFound(_)) => {
@@ -1191,7 +1191,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
                 self.update_state(rule_id, RuleRecordState::ManuallyRemoved)?;
                 self.journal.log_rule_removed(rule_id.clone(), RemovalReason::ExternalRemoval)?;
                 self.coordinator.complete_removal(rule_id);
-                info!(%rule_id, "Rule already removed (idempotent)");
+                tracing::info!(%rule_id, "Rule already removed (idempotent)");
                 Ok(RuleRollbackResult::already_removed(rule_id.clone()))
             }
             Err(e) => {
@@ -1204,7 +1204,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
                     record.generation + 2,
                 )?;
                 self.coordinator.release_removal(rule_id);
-                error!(%rule_id, error = %e, "Rollback failed");
+                tracing::error!(%rule_id, error = %e, "Rollback failed");
                 Err(RollbackEngineError::FirewallError(e))
             }
         }
@@ -1249,7 +1249,7 @@ impl<B: FirewallBackend> RollbackEngine<B> {
 
     /// Emergency: rollback all rules
     pub async fn rollback_all(&self) -> RollbackEngineResult<RollbackResult> {
-        warn!("Emergency rollback of ALL rules initiated");
+        tracing::warn!("Emergency rollback of ALL rules initiated");
         self.execute_rollback(RollbackScope::All).await
     }
 

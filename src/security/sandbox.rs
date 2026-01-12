@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use tracing::{debug, info, warn};
+
 
 use crate::config::SecurityConfig;
 
@@ -66,7 +66,7 @@ impl SandboxManager {
 
     /// Apply all sandbox restrictions
     pub fn apply_sandbox(&self) -> Result<(), SecurityError> {
-        info!("Applying sandbox restrictions");
+        tracing::info!("Applying sandbox restrictions");
 
         // Apply landlock first (filesystem restrictions)
         if self.config.enable_landlock {
@@ -78,7 +78,7 @@ impl SandboxManager {
             self.apply_seccomp()?;
         }
 
-        info!("Sandbox applied successfully");
+        tracing::info!("Sandbox applied successfully");
         Ok(())
     }
 
@@ -113,7 +113,7 @@ impl SandboxManager {
                     .add_rule(PathBeneath::new(fd, AccessFs::from_read(abi)))
                     .map_err(|e| SecurityError::Sandbox(format!("Failed to add rule: {}", e)))?;
 
-                debug!("Landlock: added read-only {}", path.display());
+                tracing::debug!("Landlock: added read-only {}", path.display());
             }
         }
 
@@ -128,7 +128,7 @@ impl SandboxManager {
                     .add_rule(PathBeneath::new(fd, AccessFs::from_all(abi)))
                     .map_err(|e| SecurityError::Sandbox(format!("Failed to add rule: {}", e)))?;
 
-                debug!("Landlock: added read-write {}", path.display());
+                tracing::debug!("Landlock: added read-write {}", path.display());
             }
         }
 
@@ -137,13 +137,13 @@ impl SandboxManager {
             .restrict_self()
             .map_err(|e| SecurityError::Sandbox(format!("Failed to restrict self: {}", e)))?;
 
-        info!("Landlock sandbox applied");
+        tracing::info!("Landlock sandbox applied");
         Ok(())
     }
 
     #[cfg(not(target_os = "linux"))]
     fn apply_landlock(&self) -> Result<(), SecurityError> {
-        warn!("Landlock not supported on this platform");
+        tracing::warn!("Landlock not supported on this platform");
         Ok(())
     }
 
@@ -283,23 +283,23 @@ impl SandboxManager {
         )
         .map_err(|e| SecurityError::Sandbox(format!("Failed to create seccomp filter: {}", e)))?;
 
-        // Compile the filter to BPF bytecode
-        // SeccompFilter::try_into() returns BpfProgram (Vec<sock_filter>), not a HashMap
+        // Compile the filter to BPF bytecode and apply it.
+        // SeccompFilter can be converted directly to BpfProgram using try_into().
         let bpf_prog: seccompiler::BpfProgram = filter
             .try_into()
-            .map_err(|e| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
+            .map_err(|e: seccompiler::Error| SecurityError::Sandbox(format!("Failed to compile filter: {:?}", e)))?;
 
         // Apply the compiled BPF program to this thread
         seccompiler::apply_filter(&bpf_prog)
             .map_err(|e| SecurityError::Sandbox(format!("Failed to apply seccomp: {}", e)))?;
 
-        info!("Seccomp filter applied ({} syscalls allowed)", allowed_syscalls.len());
+        tracing::info!("Seccomp filter applied ({} syscalls allowed)", allowed_syscalls.len());
         Ok(())
     }
 
     #[cfg(not(target_os = "linux"))]
     fn apply_seccomp(&self) -> Result<(), SecurityError> {
-        warn!("Seccomp not supported on this platform");
+        tracing::warn!("Seccomp not supported on this platform");
         Ok(())
     }
 
