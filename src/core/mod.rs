@@ -8,6 +8,7 @@ mod event_loop;
 pub mod failure;
 mod shutdown;
 mod state_machine;
+pub mod startup;
 mod supervisor;
 
 pub use alerting::{
@@ -24,6 +25,7 @@ pub use failure::{
 };
 pub use shutdown::ShutdownCoordinator;
 pub use state_machine::{AgentState, StateMachine};
+pub use startup::{StartupChecker, StartupCheckResult, run_startup_checks};
 pub use supervisor::SupervisorClient;
 
 use thiserror::Error;
@@ -55,6 +57,10 @@ pub enum CoreError {
     /// Timeout
     #[error("Operation timed out")]
     Timeout,
+
+    /// Startup check failure
+    #[error("Startup check failed: {0}")]
+    StartupCheck(String),
 
     /// Internal error
     #[error("Internal error: {0}")]

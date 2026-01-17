@@ -4,15 +4,28 @@ Documentation=https://github.com/whitequbit/whitequbit-agent
 After=network.target
 
 [Service]
-Type=notify
-ExecStart=/usr/local/bin/whitequbit-agent -c /etc/whitequbit/agent.toml
+Type=simple
+ExecStart=/usr/bin/whitequbit-agent -c /etc/whitequbit/agent.toml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
+StartLimitInterval=60
+StartLimitBurst=3
+
+# === CRITICAL: Directory Setup ===
+# These directives automatically create directories with correct ownership
+RuntimeDirectory=whitequbit
+StateDirectory=whitequbit
+LogsDirectory=whitequbit
+
+# === CRITICAL: Filesystem Access ===
+# Required paths for operation when ProtectSystem=strict is enabled
+ReadWritePaths=/var/lib/whitequbit /var/log/whitequbit /run/whitequbit
 
 # Security hardening
-NoNewPrivileges=yes
+# NOTE: NoNewPrivileges must be 'no' to allow capability handling during privilege drop
+NoNewPrivileges=no
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
@@ -24,18 +37,14 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
-MemoryDenyWriteExecute=yes
 LockPersonality=yes
 
-# Required directories
-ReadWritePaths=/var/lib/whitequbit /var/log/whitequbit /var/run/whitequbit
-RuntimeDirectory=whitequbit
-StateDirectory=whitequbit
-LogsDirectory=whitequbit
-
-# Capabilities
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_PTRACE
-AmbientCapabilities=CAP_NET_ADMIN
+# === CRITICAL: Capabilities ===
+# CAP_NET_ADMIN: Required for iptables firewall management
+# CAP_KILL: Required for service/process management
+# CAP_SETUID/CAP_SETGID: Required for privilege drop
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_KILL CAP_SETUID CAP_SETGID
+AmbientCapabilities=CAP_NET_ADMIN CAP_KILL
 
 # Resource limits
 LimitNOFILE=65536

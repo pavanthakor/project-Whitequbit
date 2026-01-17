@@ -32,6 +32,9 @@ use whitequbit_agent::{
     Result,
 };
 
+#[cfg(target_os = "linux")]
+use whitequbit_agent::core::run_startup_checks;
+
 /// Default paths for the agent
 #[cfg(unix)]
 mod paths {
@@ -87,6 +90,12 @@ async fn run_agent() -> Result<()> {
 
     // Re-initialize logging with configuration
     init_configured_logging(&config);
+
+    // Phase 1.5: Run startup checks (directories, capabilities, kernel features)
+    #[cfg(target_os = "linux")]
+    {
+        run_startup_checks(&config)?;
+    }
 
     // Phase 2: Initialize state machine (starts in Init state)
     let state_machine = Arc::new(StateMachine::new());

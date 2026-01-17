@@ -237,6 +237,19 @@ impl SshEventSource {
     ///
     /// This spawns a background task that reads from journald and emits events.
     /// Returns immediately after spawning.
+    ///
+    /// # Journal Access Requirements
+    ///
+    /// Reading from journald requires membership in the `systemd-journal` or `adm` group.
+    /// If access is denied, this function will log a warning and return Ok (degraded mode)
+    /// rather than failing hard. The agent continues without SSH monitoring.
+    ///
+    /// To fix permission issues:
+    /// ```sh
+    /// sudo usermod -aG systemd-journal whitequbit
+    /// # or
+    /// sudo usermod -aG adm whitequbit
+    /// ```
     pub async fn start(mut self) -> Result<(), EventError> {
         if !self.config.enabled {
             tracing::info!("SSH event source disabled");
@@ -244,6 +257,33 @@ impl SshEventSource {
         }
 
         tracing::info!("Starting SSH event source");
+
+        // Check if journalctl is available
+        if !Self::check_journalctl_available() {
+            tracing::warn!(
+                "journalctl not found. SSH event source disabled. \
+                 Install systemd or configure an alternative log source."
+            );
+            return Ok(());
+        }
+
+        // Check journal access before spawning long-running process
+        if let Err(access_error) = Self::check_journal_access().await {
+            tracing::warn!(
+                error = %access_error,
+                "Cannot read systemd journal - SSH monitoring disabled.\n\
+                 \n\
+                 To enable SSH monitoring, add the service user to the systemd-journal group:\n\
+                 \n\
+                 sudo usermod -aG systemd-journal whitequbit\n\
+                 # or\n\
+                 sudo usermod -aG adm whitequbit\n\
+                 \n\
+                 Then restart the service."
+            );
+            // Return Ok - we degrade gracefully, don't fail the entire agent
+            return Ok(());
+        }
 
         // Build journalctl command
         let mut cmd = Command::new("journalctl");
@@ -260,12 +300,19 @@ impl SshEventSource {
         }
 
         cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::null());
+        cmd.stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| {
-            tracing::error!(error = %e, "Failed to spawn journalctl");
-            EventError::Io(e)
-        })?;
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Failed to spawn journalctl - SSH monitoring disabled. \
+                     This may indicate a permission issue or journalctl not in PATH."
+                );
+                return Ok(());
+            }
+        };
 
         let stdout = child.stdout.take().ok_or_else(|| {
             EventError::InvalidFormat("Failed to get journalctl stdout".to_string())
@@ -505,6 +552,61 @@ impl SshEventSource {
             .and_then(|s| IpAddr::from_str(s).ok());
 
         Some(SshEventType::PamAuthFailure { username, source_ip })
+    }
+
+    /// Check if journalctl binary is available
+    fn check_journalctl_available() -> bool {
+        std::process::Command::new("which")
+            .arg("journalctl")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+            || std::path::Path::new("/bin/journalctl").exists()
+            || std::path::Path::new("/usr/bin/journalctl").exists()
+    }
+
+    /// Check if we have permission to read the systemd journal
+    async fn check_journal_access() -> Result<(), String> {
+        use std::process::Stdio;
+
+        // Try to read one entry from the journal
+        let output = Command::new("journalctl")
+            .args(["--lines=1", "--no-pager"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| format!("Failed to execute journalctl: {}", e))?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // Check for specific permission errors
+        if stderr.contains("No journal files were found")
+            || stderr.contains("Failed to open journal")
+            || stderr.contains("Permission denied")
+            || stderr.contains("Access denied")
+        {
+            return Err(format!(
+                "Journal access denied. Stderr: {}. \
+                 Ensure the service user is in the 'systemd-journal' or 'adm' group.",
+                stderr.trim()
+            ));
+        }
+
+        // Exit code non-zero but no obvious permission error
+        if !output.status.success() {
+            return Err(format!(
+                "journalctl failed with exit code {:?}: {}",
+                output.status.code(),
+                stderr.trim()
+            ));
+        }
+
+        Ok(())
     }
 
     /// Track failure count per IP

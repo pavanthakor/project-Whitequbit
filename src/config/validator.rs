@@ -1,7 +1,9 @@
 //! Configuration Validator - Schema validation
 //!
 //! Validates configuration values and reports errors.
+//! Provides detailed error messages with remediation guidance.
 
+use std::path::Path;
 
 use super::{AgentConfig, ConfigError};
 
@@ -18,6 +20,10 @@ impl ConfigValidator {
         Self::validate_actions(config)?;
         Self::validate_rollback(config)?;
 
+        // Platform-specific validation
+        #[cfg(target_os = "linux")]
+        Self::validate_linux_requirements(config)?;
+
         Ok(())
     }
 
@@ -26,7 +32,12 @@ impl ConfigValidator {
         // WAL path parent must exist or be creatable
         if let Some(parent) = config.wal_path.parent() {
             if !parent.as_os_str().is_empty() && !parent.exists() {
-                tracing::warn!("WAL directory {} does not exist, will be created", parent.display());
+                tracing::warn!(
+                    path = %parent.display(),
+                    "WAL directory does not exist, will be created. \
+                     If running under systemd with ProtectSystem=strict, \
+                     add 'StateDirectory=whitequbit' to the unit file."
+                );
             }
         }
 
@@ -35,6 +46,36 @@ impl ConfigValidator {
             return Err(ConfigError::Validation(
                 "socket_path must include a directory".to_string(),
             ));
+        }
+
+        // Validate path format
+        Self::validate_path_format("wal_path", &config.wal_path)?;
+        Self::validate_path_format("audit_path", &config.audit_path)?;
+        Self::validate_path_format("socket_path", &config.socket_path)?;
+        Self::validate_path_format("pid_path", &config.pid_path)?;
+
+        Ok(())
+    }
+
+    /// Validate path format (no traversal, no null bytes)
+    fn validate_path_format(name: &str, path: &Path) -> Result<(), ConfigError> {
+        let path_str = path.to_string_lossy();
+
+        // Check for null bytes
+        if path_str.contains('\0') {
+            return Err(ConfigError::Validation(format!(
+                "{} contains null bytes, which is invalid",
+                name
+            )));
+        }
+
+        // Warn about path traversal (but don't fail - might be intentional)
+        if path_str.contains("..") {
+            tracing::warn!(
+                path = %path_str,
+                "{} contains '..' - ensure this is intentional",
+                name
+            );
         }
 
         Ok(())
@@ -185,6 +226,59 @@ impl ConfigValidator {
 
         if rollback.max_retries == 0 {
             tracing::warn!("max_retries is 0, compensation actions will not be retried");
+        }
+
+        Ok(())
+    }
+
+    /// Validate Linux-specific requirements
+    #[cfg(target_os = "linux")]
+    fn validate_linux_requirements(config: &AgentConfig) -> Result<(), ConfigError> {
+        // Check iptables availability if not in dry-run mode
+        if !config.actions.dry_run {
+            Self::check_iptables_available()?;
+        }
+
+        // Validate sandbox paths exist or can be created
+        if config.security.apply_sandbox {
+            for path in &config.security.sandbox.readwrite_paths {
+                if !path.exists() {
+                    tracing::warn!(
+                        path = %path.display(),
+                        "Sandbox read-write path does not exist. \
+                         Landlock will skip this path."
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if iptables is available
+    #[cfg(target_os = "linux")]
+    fn check_iptables_available() -> Result<(), ConfigError> {
+        let iptables_paths = [
+            "/sbin/iptables",
+            "/usr/sbin/iptables",
+            "/bin/iptables",
+            "/usr/bin/iptables",
+        ];
+
+        let found = iptables_paths.iter().any(|p| Path::new(p).exists());
+
+        if !found {
+            return Err(ConfigError::Validation(
+                "iptables binary not found. Firewall management will not work.\n\
+                 \n\
+                 Install iptables:\n\
+                 - Debian/Ubuntu: sudo apt install iptables\n\
+                 - RHEL/CentOS: sudo yum install iptables\n\
+                 - Arch Linux: sudo pacman -S iptables\n\
+                 \n\
+                 Or set 'actions.dry_run = true' in config to disable firewall changes."
+                    .to_string(),
+            ));
         }
 
         Ok(())
