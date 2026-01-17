@@ -918,6 +918,15 @@ impl FirewallBackend for IptablesBackend {
                 let cache = self.rule_cache.read();
                 if let Some(cached) = cache.get(rule_id) {
                     // Rule is in cache but not in iptables - might have been removed externally
+                    // In dry-run mode, this means the rule was "added" and we should report
+                    // that removing it WOULD change state
+                    if self.dry_run {
+                        let previous_state = cached.state.clone();
+                        drop(cache);
+                        let mut cache = self.rule_cache.write();
+                        cache.remove(rule_id);
+                        return Ok(OperationResult::removed(rule_id.clone(), previous_state));
+                    }
                     drop(cache);
                     let mut cache = self.rule_cache.write();
                     cache.remove(rule_id);
