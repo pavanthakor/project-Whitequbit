@@ -9,6 +9,8 @@ mod dispatcher;
 mod ipc;
 mod signals;
 mod source;
+#[cfg(target_os = "linux")]
+mod ssh;
 
 #[cfg(unix)]
 pub use credentials::{IpcAuthError, IpcAuthPolicy, PeerCredentials};
@@ -20,6 +22,8 @@ pub use source::{
     ClientInfo, Event, EventId, EventPriority, EventType, FirewallEventType, ServiceEventType,
     SystemEventType,
 };
+#[cfg(target_os = "linux")]
+pub use ssh::{SshEvent, SshEventSource, SshEventSourceConfig, SshEventType};
 
 use thiserror::Error;
 
