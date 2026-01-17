@@ -134,8 +134,8 @@ impl SshEvent {
 
         Event::new(
             EventType::Custom("ssh_auth".to_string()),
-            description,
             serde_json::json!({
+                "description": description,
                 "event_type": format!("{:?}", self.event_type),
                 "source_ip": source_ip.map(|ip| ip.to_string()),
                 "timestamp": self.timestamp.to_rfc3339(),
